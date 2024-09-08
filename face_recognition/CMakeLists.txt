@@ -33,11 +33,9 @@ target_include_directories(face_recognition PRIVATE ${OpenCV_INCLUDE_DIRS})
 set(ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../assets")
 set(PROTOTXT_SOURCE "${ASSETS_DIR}/deploy.prototxt")
 set(CAFFEMODEL_SOURCE "${ASSETS_DIR}/res10_300x300_ssd_iter_140000.caffemodel")
-set(FEATURE_MODEL_SOURCE "${ASSETS_DIR}/openface_nn4.small2.v1.t7")
 set(ARCFACE_MODEL_SOURCE "${ASSETS_DIR}/arcface_model.onnx")
 set(PROTOTXT_DEST "$<TARGET_FILE_DIR:face_recognition>/deploy.prototxt")
 set(CAFFEMODEL_DEST "$<TARGET_FILE_DIR:face_recognition>/res10_300x300_ssd_iter_140000.caffemodel")
-set(FEATURE_MODEL_DEST "$<TARGET_FILE_DIR:face_recognition>/openface_nn4.small2.v1.t7")
 set(ARCFACE_MODEL_DEST "$<TARGET_FILE_DIR:face_recognition>/arcface_model.onnx")
 
 # 检查源文件是否存在
@@ -46,9 +44,6 @@ if(NOT EXISTS ${PROTOTXT_SOURCE})
 endif()
 if(NOT EXISTS ${CAFFEMODEL_SOURCE})
     message(FATAL_ERROR "Source caffemodel file not found: ${CAFFEMODEL_SOURCE}")
-endif()
-if(NOT EXISTS ${FEATURE_MODEL_SOURCE})
-    message(FATAL_ERROR "Source feature model file not found: ${FEATURE_MODEL_SOURCE}")
 endif()
 if(NOT EXISTS ${ARCFACE_MODEL_SOURCE})
     message(FATAL_ERROR "Source ArcFace model file not found: ${ARCFACE_MODEL_SOURCE}")
@@ -60,7 +55,6 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:face_recognition>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROTOTXT_SOURCE}" "${PROTOTXT_DEST}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CAFFEMODEL_SOURCE}" "${CAFFEMODEL_DEST}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${FEATURE_MODEL_SOURCE}" "${FEATURE_MODEL_DEST}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ARCFACE_MODEL_SOURCE}" "${ARCFACE_MODEL_DEST}"
     COMMENT "Copying model files to output directory"
 )
@@ -71,7 +65,6 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E echo "Checking if files were copied successfully:"
     COMMAND ${CMAKE_COMMAND} -E echo "PROTOTXT_DEST: ${PROTOTXT_DEST}"
     COMMAND ${CMAKE_COMMAND} -E echo "CAFFEMODEL_DEST: ${CAFFEMODEL_DEST}"
-    COMMAND ${CMAKE_COMMAND} -E echo "FEATURE_MODEL_DEST: ${FEATURE_MODEL_DEST}"
     COMMAND ${CMAKE_COMMAND} -E echo "ARCFACE_MODEL_DEST: ${ARCFACE_MODEL_DEST}"
 )
 
@@ -89,4 +82,5 @@ message(STATUS "OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS}")
 message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
 message(STATUS "PROTOTXT_SOURCE: ${PROTOTXT_SOURCE}")
 message(STATUS "CAFFEMODEL_SOURCE: ${CAFFEMODEL_SOURCE}")
+message(STATUS "ARCFACE_MODEL_SOURCE: ${ARCFACE_MODEL_SOURCE}")
 message(STATUS "DLL_DEST: ${ASSETS_DIR}/face_recognition.dll")

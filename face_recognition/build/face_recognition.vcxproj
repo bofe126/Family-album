@@ -125,6 +125,8 @@ if %errorlevel% neq 0 goto :cmEnd
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/Debug/res10_300x300_ssd_iter_140000.caffemodel
 if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/Debug/arcface_model.onnx
+if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
 :cmErrorLevel
@@ -137,6 +139,8 @@ if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/Debug/deploy.prototxt"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/Debug/res10_300x300_ssd_iter_140000.caffemodel"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/Debug/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
@@ -209,6 +213,8 @@ if %errorlevel% neq 0 goto :cmEnd
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/Release/res10_300x300_ssd_iter_140000.caffemodel
 if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/Release/arcface_model.onnx
+if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
 :cmErrorLevel
@@ -221,6 +227,8 @@ if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/Release/deploy.prototxt"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/Release/res10_300x300_ssd_iter_140000.caffemodel"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/Release/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
@@ -293,6 +301,8 @@ if %errorlevel% neq 0 goto :cmEnd
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/MinSizeRel/res10_300x300_ssd_iter_140000.caffemodel
 if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/MinSizeRel/arcface_model.onnx
+if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
 :cmErrorLevel
@@ -305,6 +315,8 @@ if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/MinSizeRel/deploy.prototxt"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/MinSizeRel/res10_300x300_ssd_iter_140000.caffemodel"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/MinSizeRel/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
@@ -376,6 +388,8 @@ if %errorlevel% neq 0 goto :cmEnd
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/RelWithDebInfo/res10_300x300_ssd_iter_140000.caffemodel
 if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/RelWithDebInfo/arcface_model.onnx
+if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
 :cmErrorLevel
@@ -388,6 +402,8 @@ if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/deploy.prototxt"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/res10_300x300_ssd_iter_140000.caffemodel"
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 :cmEnd
 endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
