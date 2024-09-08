@@ -3,6 +3,10 @@
 #include <vector>
 #include <iostream>
 #include <filesystem>
+#include <fstream>
+#include <locale>
+#include <codecvt>
+#include <windows.h>
 
 // 添加人脸特征提取函数
 std::vector<float> extractArcFaceFeatures(const cv::Mat& face_image, cv::dnn::Net& arcface_net) {
@@ -13,12 +17,41 @@ std::vector<float> extractArcFaceFeatures(const cv::Mat& face_image, cv::dnn::Ne
     return std::vector<float>(features.begin<float>(), features.end<float>());
 }
 
+cv::Mat readImageFile(const std::string& filename) {
+    // 将 UTF-8 字符串转换为宽字符串
+    int wideCharLength = MultiByteToWideChar(CP_UTF8, 0, filename.c_str(), -1, NULL, 0);
+    std::wstring wideFilename(wideCharLength, 0);
+    MultiByteToWideChar(CP_UTF8, 0, filename.c_str(), -1, &wideFilename[0], wideCharLength);
+
+    // 使用宽字符串打开文件
+    std::ifstream file(wideFilename, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        std::wcerr << L"Failed to open file: " << wideFilename << std::endl;
+        return cv::Mat();
+    }
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<char> buffer(size);
+    if (!file.read(buffer.data(), size)) {
+        std::wcerr << L"Failed to read file: " << wideFilename << std::endl;
+        return cv::Mat();
+    }
+
+    cv::Mat data(1, size, CV_8UC1, buffer.data());
+    return cv::imdecode(data, cv::IMREAD_COLOR);
+}
+
 extern "C" __declspec(dllexport) int detect_faces(const char* imagePath, const char* prototxtPath, const char* caffeModelPath, const char* arcfaceModelPath, int* faces, int max_faces, unsigned char** face_data, int* face_data_sizes, float** face_features) {
-    cv::Mat image = cv::imread(imagePath);
+    std::cout << "Attempting to load image from: " << imagePath << std::endl;
+
+    cv::Mat image = readImageFile(imagePath);
     if (image.empty()) {
         std::cerr << "Failed to load image: " << imagePath << std::endl;
         return 0;
     }
+
+    std::cout << "Successfully loaded image" << std::endl;
 
     cv::dnn::Net face_net = cv::dnn::readNetFromCaffe(prototxtPath, caffeModelPath);
     cv::dnn::Net arcface_net = cv::dnn::readNetFromONNX(arcfaceModelPath);
@@ -75,5 +108,12 @@ extern "C" __declspec(dllexport) int detect_faces(const char* imagePath, const c
 extern "C" __declspec(dllexport) float compare_faces(float* features1, float* features2, int feature_size) {
     cv::Mat f1(1, feature_size, CV_32F, features1);
     cv::Mat f2(1, feature_size, CV_32F, features2);
-    return cv::norm(f1, f2, cv::NORM_L2);
+    
+    // 计算余弦相似度
+    double dot = f1.dot(f2);
+    double norm1 = cv::norm(f1);
+    double norm2 = cv::norm(f2);
+    double similarity = dot / (norm1 * norm2);
+    
+    return static_cast<float>(similarity);
 }

@@ -130,8 +130,8 @@ class PhotoViewer extends StatelessWidget {
 }
 
 class FaceSidebar extends StatelessWidget {
-  final List<FaceData> uniqueFaces;
-  final Function(FaceData) onFaceSelected;
+  final List<UniqueFace> uniqueFaces;
+  final Function(UniqueFace) onFaceSelected;
 
   FaceSidebar({required this.uniqueFaces, required this.onFaceSelected});
 
@@ -144,9 +144,22 @@ class FaceSidebar extends StatelessWidget {
         itemBuilder: (context, index) {
           return GestureDetector(
             onTap: () => onFaceSelected(uniqueFaces[index]),
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Image.memory(uniqueFaces[index].faceImage),
+            child: Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Image.memory(uniqueFaces[index].faceData.faceImage),
+                ),
+                Container(
+                  padding: EdgeInsets.all(2),
+                  color: Colors.black54,
+                  child: Text(
+                    '${uniqueFaces[index].images.length}',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                ),
+              ],
             ),
           );
         },

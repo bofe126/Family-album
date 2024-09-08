@@ -108,6 +108,10 @@ class FaceRecognitionService {
     await Isolate.spawn(_isolateRecognizeFaces, [p.sendPort, imagePaths, _dllPath, _prototxtPath, _caffeModelPath, _arcfaceModelPath]);
     final result = await p.first;
     if (result is List<FaceData>) {
+      // 添加日志输出
+      for (var face in result) {
+        print('Face detected: ${face.features.length} features, first 5 values: ${face.features.sublist(0, 5)}');
+      }
       return result;
     } else {
       throw StateError('Unexpected result from isolate');
