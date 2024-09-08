@@ -1,16 +1,24 @@
-# photo
+# 照片管理应用
 
-A new Flutter project.
+这是一个使用 Flutter 开发的照片管理应用，集成了人脸识别功能。
 
-## Getting Started
+## 依赖
 
-This project is a starting point for a Flutter application.
+- Flutter
+- OpenCV
+- ONNX Runtime
 
-A few resources to get you started if this is your first Flutter project:
+## 安装
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+1. 确保您已安装 Flutter 和 Dart。
+2. 克隆此仓库。
+3. 运行 `flutter pub get` 安装依赖。
+4. 确保 `assets` 目录中包含所需的模型文件。
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 使用
+
+运行 `flutter run` 启动应用。
+
+## 注意
+
+请确保您有权使用和分发所有模型文件。

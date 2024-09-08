@@ -2,55 +2,30 @@
 #include <opencv2/dnn.hpp>
 #include <vector>
 #include <iostream>
-#include <locale>
-#include <codecvt>
-#include <windows.h>
-#include <string>
+#include <filesystem>
 
-extern "C" __declspec(dllexport) int detect_faces(const char* imagePath, int* faces, int max_faces, unsigned char** face_data, int* face_data_sizes) {
-    std::cout << "Entering detect_faces function" << std::endl;
-    std::cout << "Loading image from: " << imagePath << std::endl;
-    
-    // 将UTF-8字符串转换为宽字符串
-    int wideCharLength = MultiByteToWideChar(CP_UTF8, 0, imagePath, -1, NULL, 0);
-    std::wstring wideImagePath(wideCharLength, 0);
-    MultiByteToWideChar(CP_UTF8, 0, imagePath, -1, &wideImagePath[0], wideCharLength);
-    
-    // 将宽字符串转换为ANSI字符串
-    int ansiLength = WideCharToMultiByte(CP_ACP, 0, wideImagePath.c_str(), -1, NULL, 0, NULL, NULL);
-    std::string ansiImagePath(ansiLength, 0);
-    WideCharToMultiByte(CP_ACP, 0, wideImagePath.c_str(), -1, &ansiImagePath[0], ansiLength, NULL, NULL);
-    
-    cv::Mat image = cv::imread(ansiImagePath);
+// 添加人脸特征提取函数
+std::vector<float> extractArcFaceFeatures(const cv::Mat& face_image, cv::dnn::Net& arcface_net) {
+    cv::Mat blob = cv::dnn::blobFromImage(face_image, 1.0/128, cv::Size(112, 112), cv::Scalar(0, 0, 0), true, false);
+    arcface_net.setInput(blob);
+    cv::Mat features = arcface_net.forward();
+    cv::normalize(features, features);
+    return std::vector<float>(features.begin<float>(), features.end<float>());
+}
+
+extern "C" __declspec(dllexport) int detect_faces(const char* imagePath, const char* prototxtPath, const char* caffeModelPath, const char* arcfaceModelPath, int* faces, int max_faces, unsigned char** face_data, int* face_data_sizes, float** face_features) {
+    cv::Mat image = cv::imread(imagePath);
     if (image.empty()) {
-        std::cerr << "Failed to load image: " << ansiImagePath << std::endl;
+        std::cerr << "Failed to load image: " << imagePath << std::endl;
         return 0;
     }
-    std::cout << "Successfully loaded image" << std::endl;
 
-    // 获取当前执行路径
-    char buffer[MAX_PATH];
-    GetModuleFileNameA(NULL, buffer, MAX_PATH);
-    std::string::size_type pos = std::string(buffer).find_last_of("\\/");
-    std::string current_path = std::string(buffer).substr(0, pos);
-
-    std::string protoPath = current_path + "\\deploy.prototxt";
-    std::string modelPath = current_path + "\\res10_300x300_ssd_iter_140000.caffemodel";
-
-    // 然后修改加载模型的代码
-    cv::dnn::Net net;
-    try {
-        net = cv::dnn::readNetFromCaffe(protoPath, modelPath);
-        std::cout << "Successfully loaded face detection model from " << protoPath << " and " << modelPath << std::endl;
-    } catch (const cv::Exception& e) {
-        std::cerr << "Failed to load face detection model: " << e.what() << std::endl;
-        std::cerr << "Attempted to load from " << protoPath << " and " << modelPath << std::endl;
-        return 0;
-    }
+    cv::dnn::Net face_net = cv::dnn::readNetFromCaffe(prototxtPath, caffeModelPath);
+    cv::dnn::Net arcface_net = cv::dnn::readNetFromONNX(arcfaceModelPath);
 
     cv::Mat blob = cv::dnn::blobFromImage(image, 1.0, cv::Size(300, 300), cv::Scalar(104.0, 177.0, 123.0));
-    net.setInput(blob);
-    cv::Mat detections = net.forward();
+    face_net.setInput(blob);
+    cv::Mat detections = face_net.forward();
 
     std::vector<cv::Rect> detected_faces;
     for (int i = 0; i < detections.size[2]; i++) {
@@ -68,40 +43,37 @@ extern "C" __declspec(dllexport) int detect_faces(const char* imagePath, int* fa
     }
 
     int valid_faces = 0;
-    int num_faces_to_process = (std::min)(static_cast<int>(detected_faces.size()), max_faces);
-    for (int i = 0; i < num_faces_to_process; i++) {
-        int x = detected_faces[i].x;
-        int y = detected_faces[i].y;
-        int width = detected_faces[i].width;
-        int height = detected_faces[i].height;
+    for (const auto& face : detected_faces) {
+        if (valid_faces >= max_faces) break;
 
-        faces[valid_faces*4] = x;
-        faces[valid_faces*4+1] = y;
-        faces[valid_faces*4+2] = width;
-        faces[valid_faces*4+3] = height;
-
-        // 裁剪人脸图像
-        cv::Mat face_roi = image(detected_faces[i]);
+        cv::Mat face_roi = image(face);
+        cv::Mat resized_face;
+        cv::resize(face_roi, resized_face, cv::Size(112, 112));
         
-        // 将裁剪后的图像编码为JPEG
+        std::vector<float> features = extractArcFaceFeatures(resized_face, arcface_net);
+
+        faces[valid_faces*4] = face.x;
+        faces[valid_faces*4+1] = face.y;
+        faces[valid_faces*4+2] = face.width;
+        faces[valid_faces*4+3] = face.height;
+
         std::vector<uchar> buf;
         cv::imencode(".jpg", face_roi, buf);
-        
-        // 分配内存并复制图像数据
-        unsigned char* data = new unsigned char[buf.size()];
-        std::copy(buf.begin(), buf.end(), data);
-        
-        // 设置图像数据指针和大小
-        face_data[valid_faces] = data;
+        face_data[valid_faces] = new unsigned char[buf.size()];
+        std::copy(buf.begin(), buf.end(), face_data[valid_faces]);
         face_data_sizes[valid_faces] = static_cast<int>(buf.size());
 
+        face_features[valid_faces] = new float[features.size()];
+        std::copy(features.begin(), features.end(), face_features[valid_faces]);
+
         valid_faces++;
-        if (valid_faces >= max_faces) {
-            std::cout << "Reached maximum number of faces (" << max_faces << "). Stopping processing." << std::endl;
-            break;
-        }
     }
 
-    std::cout << "Exiting detect_faces function, detected " << valid_faces << " faces" << std::endl;
     return valid_faces;
+}
+
+extern "C" __declspec(dllexport) float compare_faces(float* features1, float* features2, int feature_size) {
+    cv::Mat f1(1, feature_size, CV_32F, features1);
+    cv::Mat f2(1, feature_size, CV_32F, features2);
+    return cv::norm(f1, f2, cv::NORM_L2);
 }

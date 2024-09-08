@@ -9,12 +9,14 @@ import 'package:provider/provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   try {
     await FaceRecognitionService.initialize();
     print('FaceRecognitionService initialized successfully');
   } catch (e) {
     print('Failed to initialize FaceRecognitionService: $e');
   }
+  
   runApp(
     ChangeNotifierProvider(
       create: (context) => PhotoState(),
@@ -58,8 +60,10 @@ class PhotoViewer extends StatelessWidget {
     }
   }
 
-  void _onDragAccept(BuildContext context, List<File> files) {
-    List<XFile> newImages = files.map((file) => XFile(_normalizePath(file.path))).toList();
+  void _onDragAccept(BuildContext context, List<DragTargetDetails<File>> details) {
+    List<XFile> newImages = details
+        .map((detail) => XFile(_normalizePath(detail.data.path)))
+        .toList();
     Provider.of<PhotoState>(context, listen: false).addImages(newImages);
   }
 
@@ -81,33 +85,69 @@ class PhotoViewer extends StatelessWidget {
       ),
       body: Consumer<PhotoState>(
         builder: (context, photoState, child) {
-          return DragTarget<File>(
-            onAcceptWithDetails: (file) => _onDragAccept(context, [file]),
-            builder: (context, candidateData, rejectedData) {
-              return photoState.imageFileList.isEmpty
-                  ? Center(child: Text('没有选择照片'))
-                  : GridView.builder(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                      ),
-                      itemCount: photoState.imageFileList.length,
-                      itemBuilder: (context, index) {
-                        return Stack(
-                          children: [
-                            PhotoView(
-                              imageProvider: FileImage(File(photoState.imageFileList[index].path)),
+          return Row(
+            children: [
+              FaceSidebar(
+                uniqueFaces: photoState.uniqueFaces,
+                onFaceSelected: (face) => photoState.selectFace(face),
+              ),
+              Expanded(
+                child: DragTarget<File>(
+                  onAcceptWithDetails: (details) => _onDragAccept(context, [details]),
+                  builder: (context, candidateData, rejectedData) {
+                    return photoState.filteredImages.isEmpty
+                        ? Center(child: Text('没有选择照片'))
+                        : GridView.builder(
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
                             ),
-                            if (photoState.faceDetected(index))
-                              Positioned(
-                                right: 5,
-                                top: 5,
-                                child: Icon(Icons.face, color: Colors.green),
-                              ),
-                          ],
-                        );
-                      },
-                    );
-            },
+                            itemCount: photoState.filteredImages.length,
+                            itemBuilder: (context, index) {
+                              return Stack(
+                                children: [
+                                  PhotoView(
+                                    imageProvider: FileImage(File(photoState.filteredImages[index].path)),
+                                  ),
+                                  if (photoState.faceDetected(photoState.filteredImages[index].path))
+                                    Positioned(
+                                      right: 5,
+                                      top: 5,
+                                      child: Icon(Icons.face, color: Colors.green),
+                                    ),
+                                ],
+                              );
+                            },
+                          );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class FaceSidebar extends StatelessWidget {
+  final List<FaceData> uniqueFaces;
+  final Function(FaceData) onFaceSelected;
+
+  FaceSidebar({required this.uniqueFaces, required this.onFaceSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 100,
+      child: ListView.builder(
+        itemCount: uniqueFaces.length,
+        itemBuilder: (context, index) {
+          return GestureDetector(
+            onTap: () => onFaceSelected(uniqueFaces[index]),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Image.memory(uniqueFaces[index].faceImage),
+            ),
           );
         },
       ),

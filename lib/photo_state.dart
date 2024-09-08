@@ -4,55 +4,49 @@ import 'face_recognition_service.dart';
 
 class PhotoState extends ChangeNotifier {
   List<XFile> _imageFileList = [];
-  Map<String, List<Uint8List>> _detectedFaces = {};
-  bool _isProcessing = false;
+  Map<String, List<FaceData>> _detectedFaces = {};
+  List<FaceData> _uniqueFaces = [];
+  FaceData? _selectedFace;
 
   List<XFile> get imageFileList => _imageFileList;
-  bool get isProcessing => _isProcessing;
+  List<FaceData> get uniqueFaces => _uniqueFaces;
+  FaceData? get selectedFace => _selectedFace;
 
-  bool faceDetected(int index) {
-    return _detectedFaces.containsKey(_imageFileList[index].path) &&
-        _detectedFaces[_imageFileList[index].path]!.isNotEmpty;
+  List<XFile> get filteredImages {
+    if (_selectedFace == null) return _imageFileList;
+    return _imageFileList.where((image) => 
+      _detectedFaces[image.path]?.any((face) => _compareFaces(face, _selectedFace!)) ?? false
+    ).toList();
   }
 
-  Future<void> addImages(List<XFile> newImages) async {
+  bool faceDetected(String imagePath) {
+    return _detectedFaces.containsKey(imagePath) && _detectedFaces[imagePath]!.isNotEmpty;
+  }
+
+  void addImages(List<XFile> newImages) async {
     _imageFileList.addAll(newImages);
+    await _detectFaces(newImages);
     notifyListeners();
-    
-    if (!FaceRecognitionService.isInitialized) {
-      print('FaceRecognitionService is not initialized. Attempting to initialize...');
-      try {
-        await FaceRecognitionService.initialize();
-      } catch (e) {
-        print('Failed to initialize FaceRecognitionService: $e');
-        return;
+  }
+
+  Future<void> _detectFaces(List<XFile> images) async {
+    for (var image in images) {
+      List<FaceData> faces = await FaceRecognitionService.recognizeFaces([image.path]);
+      _detectedFaces[image.path] = faces;
+      for (var face in faces) {
+        if (!_uniqueFaces.any((uniqueFace) => _compareFaces(face, uniqueFace))) {
+          _uniqueFaces.add(face);
+        }
       }
-    }
-
-    if (!FaceRecognitionService.isInitialized) {
-      print('FaceRecognitionService is still not initialized. Skipping face recognition.');
-      return;
-    }
-
-    _isProcessing = true;
-    notifyListeners();
-
-    try {
-      List<Uint8List> faceImages = await FaceRecognitionService.recognizeFaces(newImages.map((file) => file.path).toList());
-      for (int i = 0; i < newImages.length; i++) {
-        _detectedFaces[newImages[i].path] = faceImages;
-      }
-    } catch (e) {
-      print('Error during face recognition: $e');
-    } finally {
-      _isProcessing = false;
-      notifyListeners();
     }
   }
 
-  void clearImages() {
-    _imageFileList.clear();
-    _detectedFaces.clear();
+  void selectFace(FaceData face) {
+    _selectedFace = face;
     notifyListeners();
+  }
+
+  bool _compareFaces(FaceData face1, FaceData face2) {
+    return FaceRecognitionService.compareFaces(face1.features, face2.features) > 0.7;
   }
 }
