@@ -8,16 +8,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:photo/main.dart';
+import 'package:photo_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('相册应用启动测试', (WidgetTester tester) async {
+    // 构建我们的应用并触发一帧
+    await tester.pumpWidget(const PhotoApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // 验证初始界面是否正确显示
+    expect(find.text('相册'), findsOneWidget);
+    expect(find.byType(GridView), findsOneWidget);
 
     // Tap the '+' icon and trigger a frame.
     await tester.tap(find.byIcon(Icons.add));

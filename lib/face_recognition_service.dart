@@ -29,23 +29,19 @@ typedef DetectFacesDart = int Function(
     Pointer<Pointer<Float>> faceFeatures);
 
 typedef CompareFacesC = Float Function(
-    Pointer<Float> features1,
-    Pointer<Float> features2,
-    Int32 featureSize);
+    Pointer<Float> features1, Pointer<Float> features2, Int32 featureSize);
 
 typedef CompareFacesDart = double Function(
-    Pointer<Float> features1,
-    Pointer<Float> features2,
-    int featureSize);
+    Pointer<Float> features1, Pointer<Float> features2, int featureSize);
 
 class FaceRecognitionService {
+  static const MethodChannel _channel = MethodChannel('face_recognition');
   static late DynamicLibrary _lib;
   static late DetectFacesDart _detectFaces;
   static late CompareFacesDart _compareFaces;
   static bool _isInitialized = false;
   static late String _dllPath;
-  static late String _prototxtPath;
-  static late String _caffeModelPath;
+  static late String _yolov5ModelPath;
   static late String _arcfaceModelPath;
 
   static Future<void> initialize() async {
@@ -53,14 +49,17 @@ class FaceRecognitionService {
     try {
       await _copyAssetsToLocal();
       _dllPath = 'assets/face_recognition.dll';
-      _prototxtPath = await _getLocalPath('deploy.prototxt');
-      _caffeModelPath = await _getLocalPath('res10_300x300_ssd_iter_140000.caffemodel');
+      _yolov5ModelPath = await _getLocalPath('yolov5-face.onnx');
       _arcfaceModelPath = await _getLocalPath('arcface_model.onnx');
 
       _lib = DynamicLibrary.open(_dllPath);
-      _detectFaces = _lib.lookup<NativeFunction<DetectFacesC>>('detect_faces').asFunction();
-      _compareFaces = _lib.lookup<NativeFunction<CompareFacesC>>('compare_faces').asFunction();
-      
+      _detectFaces = _lib
+          .lookup<NativeFunction<DetectFacesC>>('detect_faces')
+          .asFunction();
+      _compareFaces = _lib
+          .lookup<NativeFunction<CompareFacesC>>('compare_faces')
+          .asFunction();
+
       _isInitialized = true;
     } catch (e) {
       print('Failed to initialize FaceRecognitionService: $e');
@@ -70,8 +69,7 @@ class FaceRecognitionService {
 
   static Future<void> _copyAssetsToLocal() async {
     final assets = [
-      'deploy.prototxt',
-      'res10_300x300_ssd_iter_140000.caffemodel',
+      'yolov5-face.onnx',
       'arcface_model.onnx'
     ];
 
@@ -100,80 +98,55 @@ class FaceRecognitionService {
   static bool get isInitialized => _isInitialized;
 
   static Future<List<FaceData>> recognizeFaces(List<String> imagePaths) async {
-    if (!_isInitialized) {
-      throw StateError('FaceRecognitionService has not been initialized');
+    final List<FaceData> allFaces = [];
+    for (final imagePath in imagePaths) {
+      final faces = await _detectFacesInImage(imagePath);
+      allFaces.addAll(faces);
     }
-
-    final p = ReceivePort();
-    await Isolate.spawn(_isolateRecognizeFaces, [p.sendPort, imagePaths, _dllPath, _prototxtPath, _caffeModelPath, _arcfaceModelPath]);
-    final result = await p.first;
-    if (result is List<FaceData>) {
-      // 添加日志输出
-      for (var face in result) {
-        print('Face detected: ${face.features.length} features, first 5 values: ${face.features.sublist(0, 5)}');
-      }
-      return result;
-    } else {
-      throw StateError('Unexpected result from isolate');
-    }
+    return allFaces;
   }
 
-  static void _isolateRecognizeFaces(List<dynamic> args) {
-    SendPort sendPort = args[0];
-    List<String> imagePaths = args[1];
-    String dllPath = args[2];
-    String prototxtPath = args[3];
-    String caffeModelPath = args[4];
-    String arcfaceModelPath = args[5];
-    
-    List<FaceData> faceDataList = [];
+  static Future<List<FaceData>> _detectFacesInImage(String imagePath) async {
+    final maxFaces = 10;
+    final facesPtr = calloc<Int32>(maxFaces * 4);
+    final faceDataPtr = calloc<Pointer<Uint8>>(maxFaces);
+    final faceDataSizesPtr = calloc<Int32>(maxFaces);
+    final faceFeaturesPtr = calloc<Pointer<Float>>(maxFaces);
 
-    final lib = DynamicLibrary.open(dllPath);
-    final detectFaces = lib.lookup<NativeFunction<DetectFacesC>>('detect_faces').asFunction<DetectFacesDart>();
+    final result = _detectFaces(
+      imagePath.toNativeUtf8(),
+      _yolov5ModelPath.toNativeUtf8(),
+      _arcfaceModelPath.toNativeUtf8(),
+      facesPtr,
+      maxFaces,
+      faceDataPtr,
+      faceDataSizesPtr,
+      faceFeaturesPtr,
+    );
 
-    for (String imagePath in imagePaths) {
-      try {
-        print('Processing image: $imagePath');
-        final normalizedPath = imagePath.replaceAll('\\', '/');
-        final imagePathPtr = normalizedPath.toNativeUtf8();
-        final prototxtPathPtr = prototxtPath.toNativeUtf8();
-        final caffeModelPathPtr = caffeModelPath.toNativeUtf8();
-        final arcfaceModelPathPtr = arcfaceModelPath.toNativeUtf8();
-        final maxFaces = 100;
-        final facesPtr = calloc<Int32>(maxFaces * 4);
-        final faceDataPtr = calloc<Pointer<Uint8>>(maxFaces);
-        final faceDataSizesPtr = calloc<Int32>(maxFaces);
-        final featurePtrs = calloc<Pointer<Float>>(maxFaces);
+    final List<FaceData> detectedFaces = [];
 
-        final numFaces = detectFaces(imagePathPtr, prototxtPathPtr, caffeModelPathPtr, arcfaceModelPathPtr, facesPtr, maxFaces, faceDataPtr, faceDataSizesPtr, featurePtrs);
-        print('detectFaces returned: $numFaces faces');
+    if (result > 0) {
+      for (int i = 0; i < result; i++) {
+        final faceImage = faceDataPtr[i].asTypedList(faceDataSizesPtr[i]);
+        final features = faceFeaturesPtr[i].asTypedList(128); // 假设特征向量长度为128
 
-        for (int i = 0; i < numFaces; i++) {
-          final dataSize = faceDataSizesPtr[i];
-          final faceImageData = faceDataPtr[i].asTypedList(dataSize);
-          final featureData = featurePtrs[i].asTypedList(512);
-          faceDataList.add(FaceData(
-            faceImage: Uint8List.fromList(faceImageData),
-            features: Float32List.fromList(featureData),
-          ));
-          calloc.free(faceDataPtr[i]);
-          calloc.free(featurePtrs[i]);
-        }
+        detectedFaces.add(FaceData(
+          faceImage: Uint8List.fromList(faceImage),
+          features: Float32List.fromList(features),
+        ));
 
-        calloc.free(imagePathPtr);
-        calloc.free(prototxtPathPtr);
-        calloc.free(caffeModelPathPtr);
-        calloc.free(arcfaceModelPathPtr);
-        calloc.free(facesPtr);
-        calloc.free(faceDataPtr);
-        calloc.free(faceDataSizesPtr);
-        calloc.free(featurePtrs);
-      } catch (e) {
-        print('Error processing image $imagePath: $e');
+        calloc.free(faceDataPtr[i]);
+        calloc.free(faceFeaturesPtr[i]);
       }
     }
 
-    sendPort.send(faceDataList);
+    calloc.free(facesPtr);
+    calloc.free(faceDataPtr);
+    calloc.free(faceDataSizesPtr);
+    calloc.free(faceFeaturesPtr);
+
+    return detectedFaces;
   }
 
   static double compareFaces(Float32List features1, Float32List features2) {

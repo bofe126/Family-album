@@ -29,7 +29,8 @@ class _FaceRecognitionState extends State<FaceRecognition> {
   Future<void> _recognizeFaces() async {
     if (widget.imagePaths.isEmpty) {
       final photoState = Provider.of<PhotoState>(context, listen: false);
-      widget.imagePaths.addAll(photoState.imageFileList.map((file) => file.path));
+      widget.imagePaths
+          .addAll(photoState.imageFileList.map((file) => file.path));
     }
 
     if (widget.imagePaths.isEmpty) {
@@ -49,11 +50,12 @@ class _FaceRecognitionState extends State<FaceRecognition> {
       print("Processing image: $path");
     }
 
-    List<Uint8List> faceImages = await FaceRecognitionService.recognizeFaces(widget.imagePaths);
+    List<FaceData> faceDataList =
+        await FaceRecognitionService.recognizeFaces(widget.imagePaths);
 
     setState(() {
       _isRecognizing = false;
-      _detectedFaces = faceImages;
+      _detectedFaces = faceDataList.map((faceData) => faceData.faceImage).toList();
     });
 
     if (_detectedFaces.length >= 100) {
@@ -82,7 +84,8 @@ class _FaceRecognitionState extends State<FaceRecognition> {
                   ),
                   SizedBox(height: 20),
                   Text('图片数量: ${widget.imagePaths.length}'),
-                  if (_detectedFaces.isNotEmpty) Text('检测到的人脸数量: ${_detectedFaces.length}'),
+                  if (_detectedFaces.isNotEmpty)
+                    Text('检测到的人脸数量: ${_detectedFaces.length}'),
                   if (_isRecognizing) CircularProgressIndicator(),
                   CheckboxListTile(
                     title: Text("显示所有检测结果"),
@@ -101,7 +104,9 @@ class _FaceRecognitionState extends State<FaceRecognition> {
             height: 100,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: _showAllDetections ? _detectedFaces.length : _detectedFaces.length ~/ 2,
+              itemCount: _showAllDetections
+                  ? _detectedFaces.length
+                  : _detectedFaces.length ~/ 2,
               itemBuilder: (context, index) {
                 return Padding(
                   padding: const EdgeInsets.all(4.0),

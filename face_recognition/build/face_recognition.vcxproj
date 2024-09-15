@@ -86,7 +86,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -106,10 +106,10 @@
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;CMAKE_INTDIR=\"Debug\";face_recognition_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -121,9 +121,7 @@
       <Command>setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E make_directory E:/code/photo/face_recognition/build/Debug
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/deploy.prototxt E:/code/photo/face_recognition/build/Debug/deploy.prototxt
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/Debug/res10_300x300_ssd_iter_140000.caffemodel
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/yolov5m.onnx E:/code/photo/face_recognition/build/Debug/yolov5m.onnx
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/Debug/arcface_model.onnx
 if %errorlevel% neq 0 goto :cmEnd
@@ -136,9 +134,7 @@ if %errorlevel% neq 0 goto :VCEnd
 setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "Checking if files were copied successfully:"
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/Debug/deploy.prototxt"
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/Debug/res10_300x300_ssd_iter_140000.caffemodel"
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "YOLOV5_MODEL_DEST: E:/code/photo/face_recognition/build/Debug/yolov5m.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/Debug/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
@@ -159,8 +155,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100d.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100d.lib;onnxruntime.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native;E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -174,7 +170,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <CompileAs>CompileAsCpp</CompileAs>
@@ -194,10 +190,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"Release\";face_recognition_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -209,9 +205,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Command>setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E make_directory E:/code/photo/face_recognition/build/Release
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/deploy.prototxt E:/code/photo/face_recognition/build/Release/deploy.prototxt
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/Release/res10_300x300_ssd_iter_140000.caffemodel
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/yolov5m.onnx E:/code/photo/face_recognition/build/Release/yolov5m.onnx
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/Release/arcface_model.onnx
 if %errorlevel% neq 0 goto :cmEnd
@@ -224,9 +218,7 @@ if %errorlevel% neq 0 goto :VCEnd
 setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "Checking if files were copied successfully:"
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/Release/deploy.prototxt"
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/Release/res10_300x300_ssd_iter_140000.caffemodel"
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "YOLOV5_MODEL_DEST: E:/code/photo/face_recognition/build/Release/yolov5m.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/Release/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
@@ -247,8 +239,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100.lib;onnxruntime.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native;E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -262,7 +254,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <CompileAs>CompileAsCpp</CompileAs>
@@ -282,10 +274,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"MinSizeRel\";face_recognition_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -297,9 +289,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Command>setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E make_directory E:/code/photo/face_recognition/build/MinSizeRel
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/deploy.prototxt E:/code/photo/face_recognition/build/MinSizeRel/deploy.prototxt
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/MinSizeRel/res10_300x300_ssd_iter_140000.caffemodel
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/yolov5m.onnx E:/code/photo/face_recognition/build/MinSizeRel/yolov5m.onnx
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/MinSizeRel/arcface_model.onnx
 if %errorlevel% neq 0 goto :cmEnd
@@ -312,9 +302,7 @@ if %errorlevel% neq 0 goto :VCEnd
 setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "Checking if files were copied successfully:"
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/MinSizeRel/deploy.prototxt"
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/MinSizeRel/res10_300x300_ssd_iter_140000.caffemodel"
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "YOLOV5_MODEL_DEST: E:/code/photo/face_recognition/build/MinSizeRel/yolov5m.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/MinSizeRel/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
@@ -335,8 +323,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100.lib;onnxruntime.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native;E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
@@ -350,7 +338,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
       <CompileAs>CompileAsCpp</CompileAs>
@@ -369,10 +357,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     </ClCompile>
     <ResourceCompile>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;CMAKE_INTDIR=\"RelWithDebInfo\";face_recognition_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Midl>
-      <AdditionalIncludeDirectories>C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\code\photo\face_recognition\build\packages\Microsoft.ML.OnnxRuntime.1.12.0\build\native\include;C:\Program Files\opencv\build\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
       <HeaderFileName>%(Filename).h</HeaderFileName>
       <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
@@ -384,9 +372,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Command>setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E make_directory E:/code/photo/face_recognition/build/RelWithDebInfo
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/deploy.prototxt E:/code/photo/face_recognition/build/RelWithDebInfo/deploy.prototxt
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/res10_300x300_ssd_iter_140000.caffemodel E:/code/photo/face_recognition/build/RelWithDebInfo/res10_300x300_ssd_iter_140000.caffemodel
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/yolov5m.onnx E:/code/photo/face_recognition/build/RelWithDebInfo/yolov5m.onnx
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E copy_if_different E:/code/photo/face_recognition/../assets/arcface_model.onnx E:/code/photo/face_recognition/build/RelWithDebInfo/arcface_model.onnx
 if %errorlevel% neq 0 goto :cmEnd
@@ -399,9 +385,7 @@ if %errorlevel% neq 0 goto :VCEnd
 setlocal
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "Checking if files were copied successfully:"
 if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "PROTOTXT_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/deploy.prototxt"
-if %errorlevel% neq 0 goto :cmEnd
-"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "CAFFEMODEL_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/res10_300x300_ssd_iter_140000.caffemodel"
+"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "YOLOV5_MODEL_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/yolov5m.onnx"
 if %errorlevel% neq 0 goto :cmEnd
 "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E echo "ARCFACE_MODEL_DEST: E:/code/photo/face_recognition/build/RelWithDebInfo/arcface_model.onnx"
 if %errorlevel% neq 0 goto :cmEnd
@@ -422,8 +406,8 @@ exit /b %1
 if %errorlevel% neq 0 goto :VCEnd</Command>
     </PostBuildEvent>
     <Link>
-      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>C:\Program Files\opencv\build\x64\vc16\lib\opencv_world4100.lib;onnxruntime.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native;E:/code/photo/face_recognition/build/packages/Microsoft.ML.OnnxRuntime.1.12.0/runtimes/win-x64/native/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>

@@ -14,6 +14,9 @@
 # EXTERNAL cache entries
 ########################
 
+//No help, variable specified on the command line.
+CMAKE_BUILD_TYPE:UNINITIALIZED=Release
+
 //Semicolon separated list of supported configuration types, only
 // supports Debug, Release, MinSizeRel, and RelWithDebInfo, anything
 // else will be ignored.
@@ -192,10 +195,13 @@ Project_SOURCE_DIR:STATIC=E:/code/photo/face_recognition
 face_recognition_BINARY_DIR:STATIC=E:/code/photo/face_recognition/build
 
 //Dependencies for the target
-face_recognition_LIB_DEPENDS:STATIC=general;opencv_dnn;
+face_recognition_LIB_DEPENDS:STATIC=general;opencv_dnn;general;onnxruntime;
 
 //Value Computed by CMake
 face_recognition_SOURCE_DIR:STATIC=E:/code/photo/face_recognition
+
+//The directory containing a CMake configuration file for onnxruntime.
+onnxruntime_DIR:PATH=onnxruntime_DIR-NOTFOUND
 
 
 ########################

@@ -3,23 +3,60 @@ import 'package:image_picker/image_picker.dart';
 import 'face_recognition_service.dart';
 import 'dart:math';
 
+class UniqueFace {
+  final FaceData faceData;
+  final List<XFile> images;
+  String? label;
+
+  UniqueFace(this.faceData, this.images);
+
+  void addImage(XFile image) {
+    if (!images.contains(image)) {
+      images.add(image);
+    }
+  }
+}
+
 class PhotoState extends ChangeNotifier {
   List<XFile> _imageFileList = [];
   Map<String, List<FaceData>> _detectedFaces = {};
   List<UniqueFace> _uniqueFaces = [];
   UniqueFace? _selectedFace;
+  double _similarityThreshold = 0.7; // 降低阈值
+  String _searchQuery = '';
 
   List<XFile> get imageFileList => _imageFileList;
   List<UniqueFace> get uniqueFaces => _uniqueFaces;
   UniqueFace? get selectedFace => _selectedFace;
+  double get similarityThreshold => _similarityThreshold;
+  String get searchQuery => _searchQuery;
 
   List<XFile> get filteredImages {
-    if (_selectedFace == null) return _imageFileList;
-    return _selectedFace!.images;
+    if (_selectedFace != null) {
+      print(
+          "Filtering by selected face: ${_selectedFace!.label ?? 'Unlabeled'}");
+      return _selectedFace!.images;
+    } else if (_searchQuery.isNotEmpty) {
+      print("Filtering by search query: $_searchQuery");
+      return _imageFileList
+          .where((image) =>
+              _detectedFaces[image.path]?.any((face) => _uniqueFaces.any(
+                  (uniqueFace) =>
+                      uniqueFace.label
+                          ?.toLowerCase()
+                          .contains(_searchQuery.toLowerCase()) ??
+                      false)) ??
+              false)
+          .toList();
+    } else {
+      print("No filter applied, returning all images");
+      return _imageFileList;
+    }
   }
 
   bool faceDetected(String imagePath) {
-    return _detectedFaces.containsKey(imagePath) && _detectedFaces[imagePath]!.isNotEmpty;
+    return _detectedFaces.containsKey(imagePath) &&
+        _detectedFaces[imagePath]!.isNotEmpty;
   }
 
   void addImages(List<XFile> newImages) async {
@@ -34,9 +71,22 @@ class PhotoState extends ChangeNotifier {
       List<FaceData> faces = await FaceRecognitionService.recognizeFaces([image.path]);
       _detectedFaces[image.path] = faces;
       for (var face in faces) {
-        _uniqueFaces.add(UniqueFace(face, [image]));
+        bool added = false;
+        for (var uniqueFace in _uniqueFaces) {
+          double similarity = FaceRecognitionService.compareFaces(
+              face.features, uniqueFace.faceData.features);
+          if (similarity > _similarityThreshold) {
+            uniqueFace.addImage(image);
+            added = true;
+            break;
+          }
+        }
+        if (!added) {
+          _uniqueFaces.add(UniqueFace(face, [image]));
+        }
       }
     }
+    _clusterFaces();
   }
 
   void _clusterFaces() {
@@ -44,48 +94,60 @@ class PhotoState extends ChangeNotifier {
     for (var face in _uniqueFaces) {
       bool added = false;
       for (var uniqueFace in newUniqueFaces) {
-        if (_compareFaces(face.faceData, uniqueFace.faceData)) {
-          uniqueFace.addImage(face.images.first);
+        double similarity = FaceRecognitionService.compareFaces(
+            face.faceData.features, uniqueFace.faceData.features);
+        if (similarity > _similarityThreshold) {
+          uniqueFace.images.addAll(face.images);
           added = true;
-          print('Face added to existing cluster. Features: ${visualizeFeatures(face.faceData.features)}');
           break;
         }
       }
       if (!added) {
         newUniqueFaces.add(face);
-        print('New unique face added. Features: ${visualizeFeatures(face.faceData.features)}');
       }
     }
     _uniqueFaces = newUniqueFaces;
-    print("Number of unique faces: ${_uniqueFaces.length}");
   }
 
   void selectFace(UniqueFace face) {
     _selectedFace = face;
+    _searchQuery = '';
     notifyListeners();
   }
 
-  bool _compareFaces(FaceData face1, FaceData face2) {
-    double similarity = FaceRecognitionService.compareFaces(face1.features, face2.features);
-    print('Face comparison similarity: $similarity');
-    return similarity > 0.85; // 调整这个阈值，余弦相似度通常使用更高的阈值
+  void setSimilarityThreshold(double value) {
+    _similarityThreshold = value;
+    _clusterFaces();
+    notifyListeners();
   }
 
-  // 添加一个方法来可视化特征向量
+  void labelFace(UniqueFace face, String label) {
+    face.label = label;
+    notifyListeners();
+  }
+
+  void setSearchQuery(String query) {
+    _searchQuery = query;
+    _selectedFace = null;
+    notifyListeners();
+  }
+
   String visualizeFeatures(Float32List features) {
-    return features.sublist(0, 10).map((f) => f.toStringAsFixed(2)).join(', ') + '...';
+    return features.sublist(0, 10).map((f) => f.toStringAsFixed(2)).join(', ') +
+        '...';
   }
-}
 
-class UniqueFace {
-  final FaceData faceData;
-  final List<XFile> images;
-
-  UniqueFace(this.faceData, this.images);
-
-  void addImage(XFile image) {
-    if (!images.contains(image)) {
-      images.add(image);
+  Future<void> detectFaces() async {
+    if (!FaceRecognitionService.isInitialized) {
+      await FaceRecognitionService.initialize();
     }
+
+    final imagePaths = _imageFileList.map((photo) => photo.path).toList();
+    final faces = await FaceRecognitionService.recognizeFaces(imagePaths);
+    
+    // 处理检测到的人脸数据
+    // ...
+
+    notifyListeners();
   }
 }
