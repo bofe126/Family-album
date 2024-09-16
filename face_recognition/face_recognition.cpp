@@ -1,5 +1,11 @@
+#define NOMINMAX
+#include <algorithm>
 #include <opencv2/opencv.hpp>
-#include <onnxruntime_cxx_api.h>
+#include <winrt/Windows.AI.MachineLearning.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.Media.h>
+#include <winrt/Windows.Storage.h>
+#include <winrt/base.h>
 #include <vector>
 #include <iostream>
 #include <filesystem>
@@ -11,6 +17,15 @@
 #include <memory>
 #include <stdexcept>
 
+// 添加以下行来解决 IVectorView 的问题
+#include <winrt/Windows.Foundation.Collections.h>
+
+using namespace winrt;
+using namespace Windows::AI::MachineLearning;
+using namespace Windows::Foundation::Collections;
+using namespace Windows::Media;
+using namespace Windows::Storage;
+
 enum class ModelType {
     YOLOV5,
     RETINAFACE
@@ -18,16 +33,13 @@ enum class ModelType {
 
 class FaceDetector {
 public:
-    FaceDetector(const std::string& modelPath, ModelType type) 
+    FaceDetector(const wchar_t* modelPath, ModelType type) 
         : m_type(type) {
         try {
-            Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "FaceDetector");
-            Ort::SessionOptions session_options;
-            session_options.SetIntraOpNumThreads(1);
-            session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-            m_session = std::make_unique<Ort::Session>(env, modelPath.c_str(), session_options);
-        } catch (const Ort::Exception& e) {
-            std::cerr << "ONNX Runtime error: " << e.what() << std::endl;
+            m_model = LearningModel::LoadFromFilePath(modelPath);
+            m_session = LearningModelSession(m_model);
+        } catch (const hresult_error& e) {
+            std::wcerr << L"AI.MachineLearning error: " << e.message().c_str() << std::endl;
             throw;
         }
     }
@@ -45,30 +57,34 @@ private:
         const int inputWidth = 640;
         const int inputHeight = 640;
         
-        cv::Mat blob;
-        cv::dnn::blobFromImage(image, blob, 1.0/255.0, cv::Size(inputWidth, inputHeight), cv::Scalar(), true, false);
-        
-        std::vector<Ort::Value> input_tensors;
-        std::vector<Ort::Value> output_tensors;
-        
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, blob.ptr<float>(), blob.total() * blob.channels(), {1, 3, inputWidth, inputHeight}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
-        
-        try {
-            output_tensors = m_session->Run(Ort::RunOptions{nullptr}, input_names.data(), input_tensors.data(), input_names.size(), output_names.data(), output_names.size());
-        } catch (const Ort::Exception& e) {
-            std::cerr << "ONNX Runtime error during inference: " << e.what() << std::endl;
-            return {};
+        cv::Mat resized;
+        cv::resize(image, resized, cv::Size(inputWidth, inputHeight));
+        cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
+
+        std::vector<float> input_tensor(resized.total() * resized.channels());
+        resized.convertTo(input_tensor, CV_32F, 1.0f / 255.0f);
+
+        auto input_tensor_view = TensorFloat::CreateFromArray({1, 3, inputHeight, inputWidth}, input_tensor);
+        auto binding = LearningModelBinding(m_session);
+        binding.Bind(L"images", input_tensor_view);
+
+        auto results = m_session.Evaluate(binding, L"output");
+
+        auto output = results.Outputs().Lookup(L"output").as<TensorFloat>();
+        auto output_shape = output.Shape();
+        auto output_data = output.GetAsVectorView();
+        std::vector<float> output_tensor;
+        output_tensor.reserve(output_data.Size());
+        for (uint32_t i = 0; i < output_data.Size(); ++i) {
+            output_tensor.push_back(output_data.GetAt(i));
         }
-        
-        // 处理输出张量，提取人脸边界框
+
         std::vector<cv::Rect> faces;
-        const float* output_data = output_tensors[0].GetTensorData<float>();
-        const size_t num_anchors = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape()[1];
-        const size_t num_classes = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape()[2] - 5;
+        const size_t num_anchors = output_shape.GetAt(1);
+        const size_t num_classes = output_shape.GetAt(2) - 5;
 
         for (size_t i = 0; i < num_anchors; ++i) {
-            const float* row = output_data + i * (num_classes + 5);
+            const float* row = &output_tensor[i * (num_classes + 5)];
             float confidence = row[4];
             if (confidence > 0.5) {  // 置信度阈值
                 float x = row[0];
@@ -90,14 +106,12 @@ private:
 
     std::vector<cv::Rect> detectRetinaFace(const cv::Mat& image) {
         // RetinaFace 检测实现
-        // ...
         return {};
     }
 
-    std::unique_ptr<Ort::Session> m_session;
+    LearningModel m_model{nullptr};
+    LearningModelSession m_session{nullptr};
     ModelType m_type;
-    std::vector<const char*> input_names = {"images"};
-    std::vector<const char*> output_names = {"output"};
 };
 
 struct DetectionResult {
@@ -109,15 +123,12 @@ struct DetectionResult {
 
 class ArcFaceExtractor {
 public:
-    ArcFaceExtractor(const std::string& modelPath) {
+    ArcFaceExtractor(const wchar_t* modelPath) {
         try {
-            Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "ArcFaceExtractor");
-            Ort::SessionOptions session_options;
-            session_options.SetIntraOpNumThreads(1);
-            session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-            m_session = std::make_unique<Ort::Session>(env, modelPath.c_str(), session_options);
-        } catch (const Ort::Exception& e) {
-            std::cerr << "ONNX Runtime error in ArcFaceExtractor: " << e.what() << std::endl;
+            m_model = LearningModel::LoadFromFilePath(modelPath);
+            m_session = LearningModelSession(m_model);
+        } catch (const hresult_error& e) {
+            std::wcerr << L"AI.MachineLearning error in ArcFaceExtractor: " << e.message().c_str() << std::endl;
             throw;
         }
     }
@@ -125,43 +136,34 @@ public:
     std::vector<float> extract(const cv::Mat& face_image) {
         cv::Mat resized_face;
         cv::resize(face_image, resized_face, cv::Size(112, 112));
-        cv::Mat float_image;
-        resized_face.convertTo(float_image, CV_32F, 1.0 / 255.0);
-
-        cv::Mat channels[3];
-        cv::split(float_image, channels);
+        cv::cvtColor(resized_face, resized_face, cv::COLOR_BGR2RGB);
         
-        std::vector<float> input_tensor;
-        input_tensor.insert(input_tensor.end(), channels[2].begin<float>(), channels[2].end<float>());
-        input_tensor.insert(input_tensor.end(), channels[1].begin<float>(), channels[1].end<float>());
-        input_tensor.insert(input_tensor.end(), channels[0].begin<float>(), channels[0].end<float>());
+        std::vector<float> input_tensor(resized_face.total() * resized_face.channels());
+        resized_face.convertTo(input_tensor, CV_32F, 1.0f / 255.0f);
 
-        std::vector<Ort::Value> input_tensors;
-        std::vector<Ort::Value> output_tensors;
+        auto input_tensor_view = TensorFloat::CreateFromArray({1, 3, 112, 112}, input_tensor);
+        auto binding = LearningModelBinding(m_session);
+        binding.Bind(L"input", input_tensor_view);
 
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        input_tensors.push_back(Ort::Value::CreateTensor<float>(memory_info, input_tensor.data(), input_tensor.size(), {1, 3, 112, 112}, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+        auto results = m_session.Evaluate(binding, L"output");
 
-        try {
-            output_tensors = m_session->Run(Ort::RunOptions{nullptr}, input_names.data(), input_tensors.data(), input_names.size(), output_names.data(), output_names.size());
-        } catch (const Ort::Exception& e) {
-            std::cerr << "ONNX Runtime error during ArcFace inference: " << e.what() << std::endl;
-            return {};
+        auto output = results.Outputs().Lookup(L"output").as<TensorFloat>();
+        auto output_data = output.GetAsVectorView();
+        std::vector<float> output_tensor;
+        output_tensor.reserve(output_data.Size());
+        for (uint32_t i = 0; i < output_data.Size(); ++i) {
+            output_tensor.push_back(output_data.GetAt(i));
         }
 
-        const float* output_data = output_tensors[0].GetTensorData<float>();
-        size_t output_size = output_tensors[0].GetTensorTypeAndShapeInfo().GetElementCount();
-
-        return std::vector<float>(output_data, output_data + output_size);
+        return output_tensor;
     }
 
 private:
-    std::unique_ptr<Ort::Session> m_session;
-    std::vector<const char*> input_names = {"input"};
-    std::vector<const char*> output_names = {"output"};
+    LearningModel m_model{nullptr};
+    LearningModelSession m_session{nullptr};
 };
 
-DetectionResult detect_faces_impl(const std::string& image_path, const std::string& yolov5_model_path, const std::string& arcface_model_path, int max_faces) {
+DetectionResult detect_faces_impl(const std::string& image_path, const wchar_t* yolov5_model_path, const wchar_t* arcface_model_path, int max_faces) {
     cv::Mat image = cv::imread(image_path);
     if (image.empty()) {
         throw std::runtime_error("Failed to load image: " + image_path);
@@ -179,13 +181,11 @@ DetectionResult detect_faces_impl(const std::string& image_path, const std::stri
         cv::Rect face = detected_faces[i];
         result.faces.push_back(face);
 
-        // 提取人脸图像
         cv::Mat face_image = image(face);
         std::vector<uchar> face_data_vec;
         cv::imencode(".jpg", face_image, face_data_vec);
         result.face_data.push_back(face_data_vec);
 
-        // 使用ArcFace模型提取特征
         std::vector<float> features = arcface_extractor.extract(face_image);
         result.face_features.push_back(features);
     }
@@ -193,7 +193,7 @@ DetectionResult detect_faces_impl(const std::string& image_path, const std::stri
     return result;
 }
 
-extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const char* yolov5_model_path, const char* arcface_model_path,
+extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const wchar_t* yolov5_model_path, const wchar_t* arcface_model_path,
                      int* faces, int max_faces, uint8_t** face_data, int* face_data_sizes, float** face_features) {
     try {
         DetectionResult result = detect_faces_impl(image_path, yolov5_model_path, arcface_model_path, max_faces);
@@ -206,7 +206,7 @@ extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const 
 
             face_data[i] = new uint8_t[result.face_data[i].size()];
             std::copy(result.face_data[i].begin(), result.face_data[i].end(), face_data[i]);
-            face_data_sizes[i] = result.face_data[i].size();
+            face_data_sizes[i] = static_cast<int>(result.face_data[i].size());
 
             face_features[i] = new float[result.face_features[i].size()];
             std::copy(result.face_features[i].begin(), result.face_features[i].end(), face_features[i]);
@@ -216,6 +216,9 @@ extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const 
     } catch (const std::exception& e) {
         std::cerr << "Error in detect_faces: " << e.what() << std::endl;
         return -1;
+    } catch (...) {
+        std::cerr << "Unknown error in detect_faces" << std::endl;
+        return -1;
     }
 }
 
@@ -223,7 +226,6 @@ extern "C" __declspec(dllexport) float compare_faces(float* features1, float* fe
     cv::Mat f1(1, feature_size, CV_32F, features1);
     cv::Mat f2(1, feature_size, CV_32F, features2);
     
-    // 计算余弦相似度
     double dot = f1.dot(f2);
     double norm1 = cv::norm(f1);
     double norm2 = cv::norm(f2);

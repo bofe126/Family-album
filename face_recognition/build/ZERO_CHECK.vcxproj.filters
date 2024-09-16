@@ -1,13 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <CustomBuild Include="E:\code\photo\face_recognition\build\CMakeFiles\873cdfb3b35937d12295559e6dcc7b52\generate.stamp.rule">
+    <CustomBuild Include="E:\code\Family-album\face_recognition\build\CMakeFiles\4074f8777b26ae21f1c7e5088afce443\generate.stamp.rule">
       <Filter>CMake Rules</Filter>
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="CMake Rules">
-      <UniqueIdentifier>{60EB0EAB-B189-3F7E-AAD6-9B39E4A3B8A6}</UniqueIdentifier>
+      <UniqueIdentifier>{5251EF45-98AC-3725-940C-D978B4A86943}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

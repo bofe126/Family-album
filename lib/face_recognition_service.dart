@@ -3,13 +3,12 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'dart:isolate';
 import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 typedef DetectFacesC = Int32 Function(
     Pointer<Utf8> imagePath,
-    Pointer<Utf8> prototxtPath,
-    Pointer<Utf8> caffeModelPath,
+    Pointer<Utf8> yolov5ModelPath,
     Pointer<Utf8> arcfaceModelPath,
     Pointer<Int32> faces,
     Int32 maxFaces,
@@ -19,8 +18,7 @@ typedef DetectFacesC = Int32 Function(
 
 typedef DetectFacesDart = int Function(
     Pointer<Utf8> imagePath,
-    Pointer<Utf8> prototxtPath,
-    Pointer<Utf8> caffeModelPath,
+    Pointer<Utf8> yolov5ModelPath,
     Pointer<Utf8> arcfaceModelPath,
     Pointer<Int32> faces,
     int maxFaces,
@@ -49,7 +47,7 @@ class FaceRecognitionService {
     try {
       await _copyAssetsToLocal();
       _dllPath = 'assets/face_recognition.dll';
-      _yolov5ModelPath = await _getLocalPath('yolov5-face.onnx');
+      _yolov5ModelPath = await _getLocalPath('yolov5m.onnx');
       _arcfaceModelPath = await _getLocalPath('arcface_model.onnx');
 
       _lib = DynamicLibrary.open(_dllPath);
@@ -69,8 +67,9 @@ class FaceRecognitionService {
 
   static Future<void> _copyAssetsToLocal() async {
     final assets = [
-      'yolov5-face.onnx',
-      'arcface_model.onnx'
+      'yolov5m.onnx',
+      'arcface_model.onnx',
+      'face_recognition.dll'  // 添加这一行
     ];
 
     for (final asset in assets) {
@@ -164,6 +163,76 @@ class FaceRecognitionService {
     calloc.free(ptr2);
 
     return similarity;
+  }
+
+  static Future<List<FaceData>> detectFacesInImage(String imagePath) async {
+    final imagePathNative = imagePath.toNativeUtf8();
+    final yolov5ModelPathNative = _yolov5ModelPath.toNativeUtf8();
+    final arcfaceModelPathNative = _arcfaceModelPath.toNativeUtf8();
+
+    final faces = calloc<Int32>(4 * 10);
+    final faceData = calloc<Pointer<Uint8>>(10);
+    final faceDataSizes = calloc<Int32>(10);
+    final faceFeatures = calloc<Pointer<Float>>(10);
+
+    try {
+      final numFaces = _detectFaces(
+        imagePathNative,
+        yolov5ModelPathNative,
+        arcfaceModelPathNative,
+        faces,
+        10,
+        faceData,
+        faceDataSizes,
+        faceFeatures,
+      );
+
+      if (numFaces < 0) {
+        throw Exception('Face detection failed');
+      }
+
+      List<FaceData> detectedFaces = [];
+      for (int i = 0; i < numFaces; i++) {
+        final faceRect = Rect.fromLTWH(
+          faces[i * 4].toDouble(),
+          faces[i * 4 + 1].toDouble(),
+          faces[i * 4 + 2].toDouble(),
+          faces[i * 4 + 3].toDouble(),
+        );
+
+        final faceImageData = faceData[i].asTypedList(faceDataSizes[i]);
+        final faceFeatureData = faceFeatures[i].asTypedList(128);
+
+        detectedFaces.add(FaceData(
+          faceImage: Uint8List.fromList(faceImageData),
+          features: Float32List.fromList(faceFeatureData),
+        ));
+      }
+
+      return detectedFaces;
+    } finally {
+      calloc.free(imagePathNative);
+      calloc.free(yolov5ModelPathNative);
+      calloc.free(arcfaceModelPathNative);
+      calloc.free(faces);
+      for (var i = 0; i < 10; i++) {
+        if (faceData[i] != nullptr) calloc.free(faceData[i]);
+        if (faceFeatures[i] != nullptr) calloc.free(faceFeatures[i]);
+      }
+      calloc.free(faceData);
+      calloc.free(faceDataSizes);
+      calloc.free(faceFeatures);
+    }
+  }
+
+  static Future<void> cleanupTempFiles() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final files = directory.listSync();
+    for (var file in files) {
+      if (file is File && (file.path.endsWith('.onnx') || file.path.endsWith('.dll'))) {
+        await file.delete();
+      }
+    }
   }
 }
 

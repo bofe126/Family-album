@@ -4,20 +4,16 @@ project(face_recognition)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 设置 OpenCV 路径，如果需要的话请修改这个路径
+# 设置 OpenCV 路径
 set(OpenCV_DIR "C:/Program Files/opencv/build")
-find_package(OpenCV REQUIRED dnn)
+find_package(OpenCV REQUIRED)
 
 if(NOT OpenCV_FOUND)
     message(FATAL_ERROR "OpenCV not found. Please set OpenCV_DIR to the correct path.")
 endif()
 
-# 设置 ONNX Runtime 路径
-set(ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/build/packages/Microsoft.ML.OnnxRuntime.1.12.0")
-
-# 使用 find_package 查找 ONNX Runtime
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-find_package(onnxruntime REQUIRED)
+# 设置 Microsoft.AI.MachineLearning 路径
+set(MICROSOFT_AI_ML_ROOT "E:/code/Family-album/third_party/microsoft.ai.machinelearning.1.19.2")
 
 if(MSVC)
   add_compile_options("/utf-8")
@@ -33,18 +29,21 @@ add_library(face_recognition SHARED ${SOURCES})
 # 设置包含目录
 target_include_directories(face_recognition PRIVATE 
     ${OpenCV_INCLUDE_DIRS}
-    ${ONNXRUNTIME_ROOT}/build/native/include
+    ${MICROSOFT_AI_ML_ROOT}/build/native/include
+    "C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/cppwinrt"
 )
 
 # 设置链接目录
 target_link_directories(face_recognition PRIVATE
-    ${ONNXRUNTIME_ROOT}/runtimes/win-x64/native
+    ${MICROSOFT_AI_ML_ROOT}/runtimes/win-x64/native
+    ${OpenCV_LIB_DIR}
 )
 
 # 链接库
 target_link_libraries(face_recognition 
     ${OpenCV_LIBS}
-    onnxruntime
+    "${MICROSOFT_AI_ML_ROOT}/runtimes/win-x64/_native/Microsoft.AI.MachineLearning.lib"
+    windowsapp
 )
 
 # 定义模型文件的源路径和目标路径
@@ -80,19 +79,20 @@ add_custom_command(
     COMMENT "Copying generated face_recognition.dll to assets directory"
 )
 
-# 复制 ONNX Runtime DLL 到目标目录
+# 复制 Microsoft.AI.MachineLearning DLL 到目标目录
 add_custom_command(
     TARGET face_recognition POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${ONNXRUNTIME_ROOT}/runtimes/win-x64/native/onnxruntime.dll"
+        "${MICROSOFT_AI_ML_ROOT}/runtimes/win-x64/_native/Microsoft.AI.MachineLearning.dll"
         "$<TARGET_FILE_DIR:face_recognition>"
-    COMMENT "Copying onnxruntime.dll to target directory"
+    COMMENT "Copying Microsoft.AI.MachineLearning.dll to target directory"
 )
 
 # 打印一些调试信息
 message(STATUS "OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS}")
 message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
-message(STATUS "ONNXRUNTIME_ROOT: ${ONNXRUNTIME_ROOT}")
+message(STATUS "OpenCV_LIB_DIR: ${OpenCV_LIB_DIR}")
+message(STATUS "MICROSOFT_AI_ML_ROOT: ${MICROSOFT_AI_ML_ROOT}")
 message(STATUS "YOLOV5_MODEL_SOURCE: ${YOLOV5_MODEL_SOURCE}")
 message(STATUS "ARCFACE_MODEL_SOURCE: ${ARCFACE_MODEL_SOURCE}")
 message(STATUS "DLL_DEST: ${ASSETS_DIR}/face_recognition.dll")
