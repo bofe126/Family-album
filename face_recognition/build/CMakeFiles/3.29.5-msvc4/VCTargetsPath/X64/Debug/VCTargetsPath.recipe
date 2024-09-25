@@ -2,7 +2,7 @@
 <Project>
   <ProjectOutputs>
     <ProjectOutput>
-      <FullPath>E:\code\Family-album\face_recognition\build\CMakeFiles\3.29.5-msvc4\X64\Debug\VCTargetsPath</FullPath>
+      <FullPath>E:\code\photo\face_recognition\build\CMakeFiles\3.29.5-msvc4\x64\Debug\VCTargetsPath</FullPath>
     </ProjectOutput>
   </ProjectOutputs>
   <ContentFiles />
