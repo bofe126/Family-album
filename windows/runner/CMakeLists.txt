@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
-
+set(CMAKE_SYSTEM_PROCESSOR x64)
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer
 # work.
@@ -38,3 +38,14 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+
+# 添加自定义命令以复制 DLL 文件
+set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/onnxruntime-win-x64-1.19.2")
+add_custom_command(
+    TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../face_recognition/build/Release/face_recognition.dll"
+        "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+        "$<TARGET_FILE_DIR:${BINARY_NAME}>/"
+    COMMENT "Copying face_recognition.dll and onnxruntime.dll to Flutter application build directory"
+)

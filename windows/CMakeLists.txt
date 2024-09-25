@@ -1,6 +1,5 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-set(CMAKE_GENERATOR "Visual Studio 17 2022")
 project(photo LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
@@ -24,7 +23,6 @@ else()
       "Debug" "Profile" "Release")
   endif()
 endif()
-
 # Define settings for the Profile build mode.
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
 set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")
@@ -53,10 +51,6 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
-
-# Add face_recognition library
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../face_recognition" face_recognition)
-target_link_libraries(${BINARY_NAME} PRIVATE face_recognition)
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
@@ -110,3 +104,20 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# 设置 ONNX Runtime 包路径
+set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/onnxruntime-win-x64-1.19.2")
+
+# 添加 onnxruntime.dll 到 PLUGIN_BUNDLED_LIBRARIES
+list(APPEND PLUGIN_BUNDLED_LIBRARIES
+    "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+)
+
+# 确保 onnxruntime.dll 被安装到正确的位置
+install(FILES 
+    "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+
+# 更新 PATH 环境变量以包含 onnxruntime.dll 的目录
+set(ENV{PATH} "${ONNXRUNTIME_DIR}/lib;$ENV{PATH}")

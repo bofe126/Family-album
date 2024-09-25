@@ -1,7 +1,6 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
-import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -33,7 +32,6 @@ typedef CompareFacesDart = double Function(
     Pointer<Float> features1, Pointer<Float> features2, int featureSize);
 
 class FaceRecognitionService {
-  static const MethodChannel _channel = MethodChannel('face_recognition');
   static late DynamicLibrary _lib;
   static late DetectFacesDart _detectFaces;
   static late CompareFacesDart _compareFaces;
@@ -42,15 +40,36 @@ class FaceRecognitionService {
   static late String _yolov5ModelPath;
   static late String _arcfaceModelPath;
 
+  static bool get isInitialized => _isInitialized;
+
   static Future<void> initialize() async {
     if (_isInitialized) return;
     try {
+      print("正在初始化 FaceRecognitionService");
       await _copyAssetsToLocal();
-      _dllPath = 'assets/face_recognition.dll';
-      _yolov5ModelPath = await _getLocalPath('yolov5m.onnx');
+      _dllPath = await _getLocalPath('face_recognition.dll');
+      _yolov5ModelPath = await _getLocalPath('yolov5l.onnx');
       _arcfaceModelPath = await _getLocalPath('arcface_model.onnx');
 
-      _lib = DynamicLibrary.open(_dllPath);
+      print("DLL 路径: $_dllPath");
+      print("YOLOV5 模型路径: $_yolov5ModelPath");
+      print("ArcFace 模型路径: $_arcfaceModelPath");
+
+      print("正在检查DLL文件是否存在...");
+      final dllFile = File(_dllPath);
+      if (!await dllFile.exists()) {
+        throw Exception("DLL文件不存在: $_dllPath");
+      }
+
+      print("正在尝试加载DLL...");
+      try {
+        _lib = DynamicLibrary.open(_dllPath);
+        print("成功加载 DLL: $_dllPath");
+      } catch (e) {
+        print("加载 DLL 失败: $e");
+        rethrow;
+      }
+
       _detectFaces = _lib
           .lookup<NativeFunction<DetectFacesC>>('detect_faces')
           .asFunction();
@@ -59,76 +78,81 @@ class FaceRecognitionService {
           .asFunction();
 
       _isInitialized = true;
+      print("FaceRecognitionService 初始化成功");
     } catch (e) {
-      print('Failed to initialize FaceRecognitionService: $e');
+      print('FaceRecognitionService 初始化失败: $e');
       rethrow;
     }
   }
 
-  static Future<void> _copyAssetsToLocal() async {
-    final assets = [
-      'yolov5m.onnx',
-      'arcface_model.onnx',
-      'face_recognition.dll'  // 添加这一行
-    ];
-
-    for (final asset in assets) {
-      final localPath = await _getLocalPath(asset);
-      if (!File(localPath).existsSync()) {
-        try {
-          final data = await rootBundle.load('assets/$asset');
-          await File(localPath).writeAsBytes(data.buffer.asUint8List());
-          print('Successfully copied $asset to $localPath');
-        } catch (e) {
-          print('Failed to copy $asset: $e');
-          rethrow;
-        }
-      } else {
-        print('$asset already exists at $localPath');
-      }
-    }
-  }
-
-  static Future<String> _getLocalPath(String fileName) async {
-    final directory = await getApplicationDocumentsDirectory();
-    return '${directory.path}/$fileName';
-  }
-
-  static bool get isInitialized => _isInitialized;
-
   static Future<List<FaceData>> recognizeFaces(List<String> imagePaths) async {
     final List<FaceData> allFaces = [];
     for (final imagePath in imagePaths) {
-      final faces = await _detectFacesInImage(imagePath);
-      allFaces.addAll(faces);
+      try {
+        print("正在处理图像: $imagePath");
+        final faces = await _detectFacesInImage(imagePath);
+        allFaces.addAll(faces);
+        print("在 $imagePath 中检测到 ${faces.length} 个人脸");
+      } catch (e) {
+        print("处理图像 $imagePath 时出错: $e");
+      }
     }
     return allFaces;
   }
 
   static Future<List<FaceData>> _detectFacesInImage(String imagePath) async {
+    final normalizedPath = _normalizePath(imagePath);
+    print("正在处理图像路径: $normalizedPath");
+    
+    // 检查图像文件是否存在
+    if (!await File(normalizedPath).exists()) {
+      print("图像文件不存在: $normalizedPath");
+      return [];
+    }
+    
+    // 检查模型文件是否存在
+    if (!await File(_yolov5ModelPath).exists()) {
+      print("YOLOV5 模型文件不存在: $_yolov5ModelPath");
+      return [];
+    }
+    if (!await File(_arcfaceModelPath).exists()) {
+      print("ArcFace 模型文件不存在: $_arcfaceModelPath");
+      return [];
+    }
+
     final maxFaces = 10;
     final facesPtr = calloc<Int32>(maxFaces * 4);
     final faceDataPtr = calloc<Pointer<Uint8>>(maxFaces);
     final faceDataSizesPtr = calloc<Int32>(maxFaces);
     final faceFeaturesPtr = calloc<Pointer<Float>>(maxFaces);
 
-    final result = _detectFaces(
-      imagePath.toNativeUtf8(),
-      _yolov5ModelPath.toNativeUtf8(),
-      _arcfaceModelPath.toNativeUtf8(),
-      facesPtr,
-      maxFaces,
-      faceDataPtr,
-      faceDataSizesPtr,
-      faceFeaturesPtr,
-    );
+    try {
+      print("YOLOV5 模型路径: $_yolov5ModelPath");
+      print("ArcFace 模型路径: $_arcfaceModelPath");
 
-    final List<FaceData> detectedFaces = [];
+      final result = _detectFaces(
+        normalizedPath.toNativeUtf8(),
+        _yolov5ModelPath.toNativeUtf8(),
+        _arcfaceModelPath.toNativeUtf8(),
+        facesPtr,
+        maxFaces,
+        faceDataPtr,
+        faceDataSizesPtr,
+        faceFeaturesPtr,
+      );
 
-    if (result > 0) {
+      print("检测到 $result 个人脸");
+
+      if (result < 0) {
+        print("人脸检测失败，错误代码: $result");
+        return [];
+      }
+
+      final List<FaceData> detectedFaces = [];
+
       for (int i = 0; i < result; i++) {
         final faceImage = faceDataPtr[i].asTypedList(faceDataSizesPtr[i]);
-        final features = faceFeaturesPtr[i].asTypedList(128); // 假设特征向量长度为128
+        final features = faceFeaturesPtr[i].asTypedList(128);
 
         detectedFaces.add(FaceData(
           faceImage: Uint8List.fromList(faceImage),
@@ -138,14 +162,17 @@ class FaceRecognitionService {
         calloc.free(faceDataPtr[i]);
         calloc.free(faceFeaturesPtr[i]);
       }
+
+      return detectedFaces;
+    } catch (e) {
+      print("_detectFacesInImage 出错: $e");
+      return [];
+    } finally {
+      calloc.free(facesPtr);
+      calloc.free(faceDataPtr);
+      calloc.free(faceDataSizesPtr);
+      calloc.free(faceFeaturesPtr);
     }
-
-    calloc.free(facesPtr);
-    calloc.free(faceDataPtr);
-    calloc.free(faceDataSizesPtr);
-    calloc.free(faceFeaturesPtr);
-
-    return detectedFaces;
   }
 
   static double compareFaces(Float32List features1, Float32List features2) {
@@ -193,12 +220,6 @@ class FaceRecognitionService {
 
       List<FaceData> detectedFaces = [];
       for (int i = 0; i < numFaces; i++) {
-        final faceRect = Rect.fromLTWH(
-          faces[i * 4].toDouble(),
-          faces[i * 4 + 1].toDouble(),
-          faces[i * 4 + 2].toDouble(),
-          faces[i * 4 + 3].toDouble(),
-        );
 
         final faceImageData = faceData[i].asTypedList(faceDataSizes[i]);
         final faceFeatureData = faceFeatures[i].asTypedList(128);
@@ -232,6 +253,49 @@ class FaceRecognitionService {
       if (file is File && (file.path.endsWith('.onnx') || file.path.endsWith('.dll'))) {
         await file.delete();
       }
+    }
+  }
+
+  static String _normalizePath(String path) {
+    return path.replaceAll('\\', '/');
+  }
+
+  static Future<void> _copyAssetsToLocal() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final assets = ['face_recognition.dll', 'yolov5l.onnx', 'arcface_model.onnx'];
+
+    for (final asset in assets) {
+      final file = File('${directory.path}${Platform.pathSeparator}$asset');
+      print("正在复制资源文件: $asset");
+      final byteData = await rootBundle.load('assets/$asset');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+      print("资源文件复制完成: $asset");
+    }
+  }
+
+  static Future<String> _getLocalPath(String fileName) async {
+    final directory = await getApplicationDocumentsDirectory();
+    return '${directory.path}${Platform.pathSeparator}$fileName';  // 使用平台特定的路径分隔符
+  }
+
+  static String _encodePath(String path) {
+    return Uri.encodeFull(path);
+  }
+
+  static Future<String> readLogFile() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final logFile = File('${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
+    if (await logFile.exists()) {
+      return await logFile.readAsString();
+    }
+    return 'Log file not found';
+  }
+
+  static Future<void> clearLogFile() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final logFile = File('${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
+    if (await logFile.exists()) {
+      await logFile.delete();
     }
   }
 }

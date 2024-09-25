@@ -6,9 +6,10 @@ import 'photo_state.dart';
 
 class FaceRecognition extends StatefulWidget {
   final List<String> imagePaths;
-  FaceRecognition({required this.imagePaths});
+  const FaceRecognition({Key? key, required this.imagePaths}) : super(key: key);
 
   @override
+  // ignore: library_private_types_in_public_api
   _FaceRecognitionState createState() => _FaceRecognitionState();
 }
 
@@ -35,7 +36,7 @@ class _FaceRecognitionState extends State<FaceRecognition> {
 
     if (widget.imagePaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('没有可识别的照片')),
+        const SnackBar(content: Text('没有可识别的照片')),
       );
       return;
     }
