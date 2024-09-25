@@ -1,6 +1,6 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(photo LANGUAGES CXX)
+project(photo VERSION 1.0.0 LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
@@ -105,19 +105,35 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
-# 设置 ONNX Runtime 包路径
-set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/onnxruntime-win-x64-1.19.2")
+# 在文件前部添加选项
+option(USE_ONNX_RUNTIME "Use ONNX Runtime" ON)
+option(USE_FACE_RECOGNITION "Use Face Recognition" ON)
 
-# 添加 onnxruntime.dll 到 PLUGIN_BUNDLED_LIBRARIES
-list(APPEND PLUGIN_BUNDLED_LIBRARIES
-    "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
-)
+# 设置通用路径变量
+set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
+set(FACE_RECOGNITION_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../face_recognition")
 
-# 确保 onnxruntime.dll 被安装到正确的位置
-install(FILES 
-    "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
-    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-    COMPONENT Runtime)
+# ONNX Runtime 配置
+if(USE_ONNX_RUNTIME)
+  set(ONNXRUNTIME_VERSION "1.19.2")  # 确保这个版本号是正确的
+  set(ONNXRUNTIME_DIR "${THIRD_PARTY_DIR}/onnxruntime-win-x64-${ONNXRUNTIME_VERSION}")
+  set(ONNXRUNTIME_DLL "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
 
-# 更新 PATH 环境变量以包含 onnxruntime.dll 的目录
-set(ENV{PATH} "${ONNXRUNTIME_DIR}/lib;$ENV{PATH}")
+  if(EXISTS ${ONNXRUNTIME_DLL})
+    list(APPEND PLUGIN_BUNDLED_LIBRARIES ${ONNXRUNTIME_DLL})
+
+    install(FILES ${ONNXRUNTIME_DLL}
+        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+        COMPONENT Runtime)
+
+    set(ENV{PATH} "${ONNXRUNTIME_DIR}/lib;$ENV{PATH}")
+  else()
+    message(WARNING "onnxruntime.dll not found at ${ONNXRUNTIME_DLL}")
+  endif()
+endif()
+
+# Face Recognition 配置
+# if(USE_FACE_RECOGNITION)
+#   add_subdirectory("${FACE_RECOGNITION_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/face_recognition")
+#   target_link_libraries(${BINARY_NAME} PRIVATE face_recognition)
+# endif()
