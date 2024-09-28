@@ -27,12 +27,12 @@ namespace fs = std::filesystem;
 class FaceDetector {
 public:
     FaceDetector(const char* modelPath, ModelType type) 
-        : m_type(type) {
+        : m_type(type), env(ORT_LOGGING_LEVEL_WARNING, "FaceDetector") {
         try {
             fs::path fullPath = fs::absolute(modelPath);
-            std::cout << "正在加载模型: " << fullPath.string() << std::endl;
+
             
-            Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "FaceDetector");
+            std::cout << "初始化 Ort::Env 对象成功";
             Ort::SessionOptions session_options;
             session_options.SetIntraOpNumThreads(1);
             session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
@@ -148,6 +148,7 @@ private:
         }
     }
 
+    Ort::Env env;
     std::unique_ptr<Ort::Session> m_session;
     ModelType m_type;
 };

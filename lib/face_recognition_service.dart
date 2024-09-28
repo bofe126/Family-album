@@ -103,13 +103,13 @@ class FaceRecognitionService {
   static Future<List<FaceData>> _detectFacesInImage(String imagePath) async {
     final normalizedPath = _normalizePath(imagePath);
     print("正在处理图像路径: $normalizedPath");
-    
+
     // 检查图像文件是否存在
     if (!await File(normalizedPath).exists()) {
       print("图像文件不存在: $normalizedPath");
       return [];
     }
-    
+
     // 检查模型文件是否存在
     if (!await File(_yolov5ModelPath).exists()) {
       print("YOLOV5 模型文件不存在: $_yolov5ModelPath");
@@ -220,7 +220,6 @@ class FaceRecognitionService {
 
       List<FaceData> detectedFaces = [];
       for (int i = 0; i < numFaces; i++) {
-
         final faceImageData = faceData[i].asTypedList(faceDataSizes[i]);
         final faceFeatureData = faceFeatures[i].asTypedList(128);
 
@@ -250,7 +249,8 @@ class FaceRecognitionService {
     final directory = await getApplicationDocumentsDirectory();
     final files = directory.listSync();
     for (var file in files) {
-      if (file is File && (file.path.endsWith('.onnx') || file.path.endsWith('.dll'))) {
+      if (file is File &&
+          (file.path.endsWith('.onnx') || file.path.endsWith('.dll'))) {
         await file.delete();
       }
     }
@@ -262,7 +262,11 @@ class FaceRecognitionService {
 
   static Future<void> _copyAssetsToLocal() async {
     final directory = await getApplicationDocumentsDirectory();
-    final assets = ['face_recognition.dll', 'yolov5l.onnx', 'arcface_model.onnx'];
+    final assets = [
+      'face_recognition.dll',
+      'yolov5l.onnx',
+      'arcface_model.onnx'
+    ];
 
     for (final asset in assets) {
       final file = File('${directory.path}${Platform.pathSeparator}$asset');
@@ -275,7 +279,7 @@ class FaceRecognitionService {
 
   static Future<String> _getLocalPath(String fileName) async {
     final directory = await getApplicationDocumentsDirectory();
-    return '${directory.path}${Platform.pathSeparator}$fileName';  // 使用平台特定的路径分隔符
+    return '${directory.path}${Platform.pathSeparator}$fileName'; // 使用平台特定的路径分隔符
   }
 
   static String _encodePath(String path) {
@@ -284,7 +288,8 @@ class FaceRecognitionService {
 
   static Future<String> readLogFile() async {
     final directory = await getApplicationDocumentsDirectory();
-    final logFile = File('${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
+    final logFile = File(
+        '${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
     if (await logFile.exists()) {
       return await logFile.readAsString();
     }
@@ -293,7 +298,8 @@ class FaceRecognitionService {
 
   static Future<void> clearLogFile() async {
     final directory = await getApplicationDocumentsDirectory();
-    final logFile = File('${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
+    final logFile = File(
+        '${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
     if (await logFile.exists()) {
       await logFile.delete();
     }

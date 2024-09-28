@@ -107,11 +107,9 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
 
 # 在文件前部添加选项
 option(USE_ONNX_RUNTIME "Use ONNX Runtime" ON)
-option(USE_FACE_RECOGNITION "Use Face Recognition" ON)
 
 # 设置通用路径变量
 set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
-set(FACE_RECOGNITION_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../face_recognition")
 
 # ONNX Runtime 配置
 if(USE_ONNX_RUNTIME)
@@ -127,13 +125,8 @@ if(USE_ONNX_RUNTIME)
         COMPONENT Runtime)
 
     set(ENV{PATH} "${ONNXRUNTIME_DIR}/lib;$ENV{PATH}")
+
   else()
     message(WARNING "onnxruntime.dll not found at ${ONNXRUNTIME_DLL}")
   endif()
 endif()
-
-# Face Recognition 配置
-# if(USE_FACE_RECOGNITION)
-#   add_subdirectory("${FACE_RECOGNITION_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/face_recognition")
-#   target_link_libraries(${BINARY_NAME} PRIVATE face_recognition)
-# endif()

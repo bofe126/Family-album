@@ -44,7 +44,7 @@ set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/onnxruntime-w
 add_custom_command(
     TARGET ${BINARY_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../face_recognition/build/Release/face_recognition.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/face_recognition.dll"
         "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
         "$<TARGET_FILE_DIR:${BINARY_NAME}>/"
     COMMENT "Copying face_recognition.dll and onnxruntime.dll to Flutter application build directory"
