@@ -46,11 +46,12 @@ class FaceRecognitionService {
     if (_isInitialized) return;
     try {
       print("正在初始化 FaceRecognitionService");
+      
       _dllPath = 'face_recognition.dll';  // 直接使用 DLL 名称
       _yolov5ModelPath = 'assets/yolov5l.onnx';
       _arcfaceModelPath = 'assets/arcface_model.onnx';
 
-      print("正在尝试加载DLL...");
+      print("正在尝试加载 face_recognition.dll...");
       _lib = DynamicLibrary.open(_dllPath);
       print("成功加载 DLL: $_dllPath");
 

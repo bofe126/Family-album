@@ -24,6 +24,39 @@ enum class ModelType {
 
 namespace fs = std::filesystem;
 
+// 在全局范围或在某个初始化函数中
+HMODULE onnxruntimeModule = NULL;
+
+bool loadOnnxRuntime() {
+    onnxruntimeModule = LoadLibraryA("onnxruntime.dll");
+    if (onnxruntimeModule == NULL) {
+        std::cerr << "Failed to load onnxruntime.dll. Error code: " << GetLastError() << std::endl;
+        return false;
+    }
+    std::cout << "Successfully loaded onnxruntime.dll" << std::endl;
+    return true;
+}
+
+// 在 DllMain 或初始化函数中调用
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+        if (!loadOnnxRuntime()) {
+            return FALSE; // 如果加载失败，返回 FALSE 可能会阻止 DLL 被加载
+        }
+        break;
+    case DLL_THREAD_ATTACH:
+    case DLL_THREAD_DETACH:
+        break;
+    case DLL_PROCESS_DETACH:
+        if (onnxruntimeModule != NULL) {
+            FreeLibrary(onnxruntimeModule);
+        }
+        break;
+    }
+    return TRUE;
+}
+
 class FaceDetector {
 public:
     FaceDetector(const char* modelPath, ModelType type) 
