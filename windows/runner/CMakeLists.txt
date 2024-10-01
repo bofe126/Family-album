@@ -15,7 +15,6 @@ add_executable(${BINARY_NAME} WIN32
   "Runner.rc"
   "runner.exe.manifest"
 )
-
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
@@ -36,16 +35,19 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
+# 在适当的位置添加 onnxruntime 库链接
+target_link_libraries(${BINARY_NAME} PRIVATE ${EXTRA_LIBS})
+
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
 
-# 添加自定义命令以复制 DLL 文件
-set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/onnxruntime-win-x64-1.19.2")
-add_custom_command(
-    TARGET ${BINARY_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/face_recognition.dll"
-        "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
-        "$<TARGET_FILE_DIR:${BINARY_NAME}>/"
-    COMMENT "Copying face_recognition.dll and onnxruntime.dll to Flutter application build directory"
-)
+# 移除这个部分
+# 复制必要的 DLL 文件到输出目录
+# add_custom_command(
+#     TARGET ${BINARY_NAME} POST_BUILD
+#     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#         "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/face_recognition.dll"
+#         "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+#         "$<TARGET_FILE_DIR:${BINARY_NAME}>/"
+#     COMMENT "Copying face_recognition.dll and onnxruntime.dll to Flutter application build directory"
+# )

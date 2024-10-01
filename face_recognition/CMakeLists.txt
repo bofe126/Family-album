@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(OpenCV_DIR "C:/Program Files/opencv/build")
 find_package(OpenCV REQUIRED dnn)
 
-# 设置 ONNX Runtime 包路径
-set(ONNXRUNTIME_DIR "E:/code/photo/third_party/onnxruntime-win-x64-1.19.2")
+# 更新 ONNX Runtime 包路径
+set(ONNXRUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/onnxruntime-win-x64-1.19.2")
 include_directories("${ONNXRUNTIME_DIR}/include")
 link_directories("${ONNXRUNTIME_DIR}/lib")
 
@@ -40,14 +40,14 @@ target_link_directories(face_recognition PRIVATE
 # 链接库（包括 onnxruntime）
 target_link_libraries(face_recognition 
     ${OpenCV_LIBS} 
-    ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib
+    onnxruntime
 )
 
 # 复制 onnxruntime.dll 到输出目录
 add_custom_command(TARGET face_recognition POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
-        "$<TARGET_FILE_DIR:face_recognition>/onnxruntime.dll"
+        "$<TARGET_FILE_DIR:face_recognition>"
 )
 
 # 定义模型文件的源路径和目标路径

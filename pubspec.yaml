@@ -31,4 +31,3 @@ flutter:
   assets:
     - assets/yolov5l.onnx  # 更新文件名
     - assets/arcface_model.onnx
-    - assets/face_recognition.dll

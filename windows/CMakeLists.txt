@@ -49,6 +49,17 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+# 设置通用路径变量
+set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
+
+# 设置 ONNX Runtime 路径
+set(ONNXRUNTIME_DIR "${THIRD_PARTY_DIR}/onnxruntime-win-x64-1.19.2")
+include_directories("${ONNXRUNTIME_DIR}/include")
+link_directories("${ONNXRUNTIME_DIR}/lib")
+
+# 在 add_subdirectory("runner") 之前添加这行
+set(EXTRA_LIBS ${EXTRA_LIBS} "${ONNXRUNTIME_DIR}/lib/onnxruntime.lib")
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
@@ -104,29 +115,9 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
-
-# 在文件前部添加选项
-option(USE_ONNX_RUNTIME "Use ONNX Runtime" ON)
-
-# 设置通用路径变量
-set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party")
-
-# ONNX Runtime 配置
-if(USE_ONNX_RUNTIME)
-  set(ONNXRUNTIME_VERSION "1.19.2")  # 确保这个版本号是正确的
-  set(ONNXRUNTIME_DIR "${THIRD_PARTY_DIR}/onnxruntime-win-x64-${ONNXRUNTIME_VERSION}")
-  set(ONNXRUNTIME_DLL "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
-
-  if(EXISTS ${ONNXRUNTIME_DLL})
-    list(APPEND PLUGIN_BUNDLED_LIBRARIES ${ONNXRUNTIME_DLL})
-
-    install(FILES ${ONNXRUNTIME_DLL}
-        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-        COMPONENT Runtime)
-
-    set(ENV{PATH} "${ONNXRUNTIME_DIR}/lib;$ENV{PATH}")
-
-  else()
-    message(WARNING "onnxruntime.dll not found at ${ONNXRUNTIME_DLL}")
-  endif()
-endif()
+# 添加 face_recognition.dll 和 onnxruntime.dll 的安装命令
+install(FILES 
+    "${CMAKE_CURRENT_SOURCE_DIR}/../assets/face_recognition.dll"
+    "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
