@@ -46,29 +46,13 @@ class FaceRecognitionService {
     if (_isInitialized) return;
     try {
       print("正在初始化 FaceRecognitionService");
-      await _copyAssetsToLocal();
-      _dllPath = await _getLocalPath('face_recognition.dll');
-      _yolov5ModelPath = await _getLocalPath('yolov5l.onnx');
-      _arcfaceModelPath = await _getLocalPath('arcface_model.onnx');
-
-      print("DLL 路径: $_dllPath");
-      print("YOLOV5 模型路径: $_yolov5ModelPath");
-      print("ArcFace 模型路径: $_arcfaceModelPath");
-
-      print("正在检查DLL文件是否存在...");
-      final dllFile = File(_dllPath);
-      if (!await dllFile.exists()) {
-        throw Exception("DLL文件不存在: $_dllPath");
-      }
+      _dllPath = 'face_recognition.dll';  // 直接使用 DLL 名称
+      _yolov5ModelPath = 'assets/yolov5l.onnx';
+      _arcfaceModelPath = 'assets/arcface_model.onnx';
 
       print("正在尝试加载DLL...");
-      try {
-        _lib = DynamicLibrary.open(_dllPath);
-        print("成功加载 DLL: $_dllPath");
-      } catch (e) {
-        print("加载 DLL 失败: $e");
-        rethrow;
-      }
+      _lib = DynamicLibrary.open(_dllPath);
+      print("成功加载 DLL: $_dllPath");
 
       _detectFaces = _lib
           .lookup<NativeFunction<DetectFacesC>>('detect_faces')
