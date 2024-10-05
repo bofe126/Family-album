@@ -4,6 +4,7 @@ import 'package:ffi/ffi.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:async';
 
 typedef DetectFacesC = Int32 Function(
     Pointer<Utf8> imagePath,
@@ -39,6 +40,7 @@ class FaceRecognitionService {
   static late String _dllPath;
   static late String _yolov5ModelPath;
   static late String _arcfaceModelPath;
+  static bool _logPrinted = false;
 
   static bool get isInitialized => _isInitialized;
 
@@ -47,7 +49,7 @@ class FaceRecognitionService {
     try {
       print("正在初始化 FaceRecognitionService");
       
-      _dllPath = 'face_recognition.dll';  // 直接使用 DLL 名称
+      _dllPath = 'face_recognition.dll';
       _yolov5ModelPath = 'assets/yolov5l.onnx';
       _arcfaceModelPath = 'assets/arcface_model.onnx';
 
@@ -64,9 +66,24 @@ class FaceRecognitionService {
 
       _isInitialized = true;
       print("FaceRecognitionService 初始化成功");
+
+      // 只打印一次日志
+      _readAndPrintLog();
     } catch (e) {
       print('FaceRecognitionService 初始化失败: $e');
       rethrow;
+    }
+  }
+
+  static Future<void> _readAndPrintLog() async {
+    if (!_logPrinted) {
+      try {
+        final logContent = await readLogFile();
+        print("C++ Log: $logContent");
+        _logPrinted = true;
+      } catch (e) {
+        print("Error reading log file: $e");
+      }
     }
   }
 
@@ -272,13 +289,15 @@ class FaceRecognitionService {
   }
 
   static Future<String> readLogFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final logFile = File(
-        '${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
-    if (await logFile.exists()) {
-      return await logFile.readAsString();
+    try {
+      final file = File('face_recognition_log.txt');
+      if (await file.exists()) {
+        return await file.readAsString();
+      }
+    } catch (e) {
+      print("Error reading log file: $e");
     }
-    return 'Log file not found';
+    return 'Log file not found or empty';
   }
 
   static Future<void> clearLogFile() async {

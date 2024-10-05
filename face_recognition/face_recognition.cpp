@@ -13,6 +13,8 @@
 #include <codecvt>
 #include <locale>
 #include <fstream>
+#include <chrono>
+#include <iomanip>
 
 // 函数声明
 std::wstring ConvertToWideString(const std::string& multibyteStr);
@@ -26,31 +28,92 @@ namespace fs = std::filesystem;
 
 // 在全局范围或在某个初始化函数中
 HMODULE onnxruntimeModule = NULL;
+bool isDllLoaded = false;
+
+// 全局变量来存储日志文件路径
+std::string logFilePath;
+
+void initializeLogFile() {
+    // 获取当前执行文件的路径
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    std::filesystem::path exePath(buffer);
+    
+    // 设置日志文件路径为执行文件所在目录
+    logFilePath = (exePath.parent_path() / "face_recognition_log.txt").string();
+    
+    // 清空日志文件
+    std::ofstream logfile(logFilePath, std::ios::trunc);
+    logfile.close();
+}
+
+void log(const std::string& message) {
+    auto now = std::chrono::system_clock::now();
+    auto in_time_t = std::chrono::system_clock::to_time_t(now);
+    std::stringstream ss;
+    ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d %X");
+    
+    std::cout << "face_recognition.dll Log [" << ss.str() << "]: " << message << std::endl;
+    
+    static std::ofstream logfile(logFilePath, std::ios::app);
+    logfile << "face_recognition.dll Log [" << ss.str() << "]: " << message << std::endl;
+    logfile.flush(); // 确保立即写入文件
+}
 
 bool loadOnnxRuntime() {
+    if (isDllLoaded) {
+        log("onnxruntime.dll already loaded");
+        return true;
+    }
+
     onnxruntimeModule = LoadLibraryA("onnxruntime.dll");
     if (onnxruntimeModule == NULL) {
-        std::cerr << "Failed to load onnxruntime.dll. Error code: " << GetLastError() << std::endl;
+        DWORD error = GetLastError();
+        log("Failed to load onnxruntime.dll. Error code: " + std::to_string(error));
         return false;
     }
-    std::cout << "Successfully loaded onnxruntime.dll" << std::endl;
+    log("Successfully loaded onnxruntime.dll");
+
+    // 尝试获取 OrtGetApiBase 函数
+    auto getApiBase = (decltype(&OrtGetApiBase))GetProcAddress(onnxruntimeModule, "OrtGetApiBase");
+    if (getApiBase == nullptr) {
+        DWORD error = GetLastError();
+        log("Failed to get OrtGetApiBase. Error code: " + std::to_string(error));
+        return false;
+    }
+    log("Successfully got OrtGetApiBase");
+
+    // 尝试调用 OrtGetApiBase
+    const OrtApiBase* ortApiBase = getApiBase();
+    if (ortApiBase == nullptr) {
+        log("OrtGetApiBase returned nullptr");
+        return false;
+    }
+    log("Successfully called OrtGetApiBase");
+
+    isDllLoaded = true;
     return true;
 }
 
-// 在 DllMain 或初始化函数中调用
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
+        initializeLogFile(); // 初始化日志文件
+        log("DLL_PROCESS_ATTACH");
         if (!loadOnnxRuntime()) {
-            return FALSE; // 如果加载失败，返回 FALSE 可能会阻止 DLL 被加载
+            return FALSE;
         }
+        log("onnxruntime.dll loaded successfully");
         break;
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
         break;
     case DLL_PROCESS_DETACH:
+        log("DLL_PROCESS_DETACH");
         if (onnxruntimeModule != NULL) {
             FreeLibrary(onnxruntimeModule);
+            log("onnxruntime.dll unloaded");
+            isDllLoaded = false;
         }
         break;
     }
@@ -60,46 +123,72 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 class FaceDetector {
 public:
     FaceDetector(const char* modelPath, ModelType type) 
-        : m_type(type), env(ORT_LOGGING_LEVEL_WARNING, "FaceDetector") {
+        : m_type(type) {
         try {
-            fs::path fullPath = fs::absolute(modelPath);
+            log("进入FaceDetector构造函数");
+            log("模型路径: " + std::string(modelPath));
+            log("模型类型: " + std::to_string(static_cast<int>(type)));
 
-            
-            std::cout << "初始化 Ort::Env 对象成功";
+            log("准备创建Ort::Env");
+            try {
+                env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "FaceDetector");
+                log("Ort::Env创建成功");
+            } catch (const Ort::Exception& e) {
+                log("Ort::Env创建失败: " + std::string(e.what()));
+                throw;
+            } catch (const std::exception& e) {
+                log("Ort::Env创建时发生标准异常: " + std::string(e.what()));
+                throw;
+            } catch (...) {
+                log("Ort::Env创建时发生未知异常");
+                throw;
+            }
+
+            log("初始化FaceDetector");
+            fs::path fullPath = fs::absolute(modelPath);
+            log("完整模型路径: " + fullPath.string());
+
+            log("创建Ort::SessionOptions");
             Ort::SessionOptions session_options;
             session_options.SetIntraOpNumThreads(1);
             session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+            log("Ort::SessionOptions创建成功");
 
+            log("转换模型路径为宽字符串");
             std::wstring wideModelPath = ConvertToWideString(fullPath.string());
+            log("模型路径转换成功");
+
+            log("创建Ort::Session");
             m_session = std::make_unique<Ort::Session>(env, wideModelPath.c_str(), session_options);
+            log("Ort::Session创建成功");
 
             // 打印模型信息
             Ort::AllocatorWithDefaultOptions allocator;
             size_t num_input_nodes = m_session->GetInputCount();
             size_t num_output_nodes = m_session->GetOutputCount();
 
-            std::cout << "Number of inputs: " << num_input_nodes << std::endl;
-            std::cout << "Number of outputs: " << num_output_nodes << std::endl;
+            log("输入节点数量: " + std::to_string(num_input_nodes));
+            log("输出节点数量: " + std::to_string(num_output_nodes));
 
             for (size_t i = 0; i < num_input_nodes; i++) {
                 auto input_name = m_session->GetInputNameAllocated(i, allocator);
-                std::cout << "Input " << i << " name: " << input_name.get() << std::endl;
+                log("输入 " + std::to_string(i) + " 名称: " + input_name.get());
             }
 
             for (size_t i = 0; i < num_output_nodes; i++) {
                 auto output_name = m_session->GetOutputNameAllocated(i, allocator);
-                std::cout << "Output " << i << " name: " << output_name.get() << std::endl;
+                log("输出 " + std::to_string(i) + " 名称: " + output_name.get());
             }
 
-            std::cout << "模型加载成功" << std::endl;
+            log("FaceDetector初始化成功");
         } catch (const Ort::Exception& e) {
-            std::cerr << "ONNX Runtime error in FaceDetector: " << e.what() << std::endl;
+            log("ONNX Runtime错误: " + std::string(e.what()));
             throw;
         } catch (const std::exception& e) {
-            std::cerr << "Standard exception in FaceDetector: " << e.what() << std::endl;
+            log("标准异常: " + std::string(e.what()));
             throw;
         } catch (...) {
-            std::cerr << "Unknown exception in FaceDetector" << std::endl;
+            log("未知异常");
             throw;
         }
     }
@@ -375,7 +464,12 @@ DetectionResult detect_faces_impl(const std::string& image_path, const char* yol
 
 extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const char* yolov5_model_path, const char* arcface_model_path,
                      int* faces, int max_faces, uint8_t** face_data, int* face_data_sizes, float** face_features) {
+    log("进入detect_faces函数");
     try {
+        log("创建FaceDetector");
+        static FaceDetector detector(yolov5_model_path, ModelType::YOLOV5);
+        log("FaceDetector创建成功");
+
         DetectionResult result = detect_faces_impl(image_path, yolov5_model_path, arcface_model_path, max_faces);
 
         for (int i = 0; i < result.num_faces; i++) {
@@ -394,10 +488,10 @@ extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const 
 
         return result.num_faces;
     } catch (const std::exception& e) {
-        std::cerr << "Error in detect_faces: " << e.what() << std::endl;
+        log("detect_faces中的错误: " + std::string(e.what()));
         return -1;
     } catch (...) {
-        std::cerr << "Unknown error in detect_faces" << std::endl;
+        log("detect_faces中的未知错误");
         return -1;
     }
 }
