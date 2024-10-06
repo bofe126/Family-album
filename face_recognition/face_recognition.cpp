@@ -1,4 +1,4 @@
-#include "onnxruntime_cxx_api.h"
+#include <onnxruntime_cxx_api.h>
 #define NOMINMAX
 #include <algorithm>
 #include <opencv2/opencv.hpp>
@@ -25,10 +25,6 @@ enum class ModelType {
 };
 
 namespace fs = std::filesystem;
-
-// 在全局范围或在某个初始化函数中
-HMODULE onnxruntimeModule = NULL;
-bool isDllLoaded = false;
 
 // 全局变量来存储日志文件路径
 std::string logFilePath;
@@ -60,66 +56,17 @@ void log(const std::string& message) {
     logfile.flush(); // 确保立即写入文件
 }
 
-bool loadOnnxRuntime() {
-    if (isDllLoaded) {
-        log("onnxruntime.dll already loaded");
-        return true;
-    }
+// 在文件开头添加全局 Ort::Env
+Ort::Env& getGlobalOrtEnv() {
+    std::string version = Ort::GetVersionString();
+    log("ONNX Runtime版本: " + version);
 
-    onnxruntimeModule = LoadLibraryA("onnxruntime.dll");
-    if (onnxruntimeModule == NULL) {
-        DWORD error = GetLastError();
-        log("Failed to load onnxruntime.dll. Error code: " + std::to_string(error));
-        return false;
-    }
-    log("Successfully loaded onnxruntime.dll");
+    static Ort::Env env;
+    return env;
 
-    // 尝试获取 OrtGetApiBase 函数
-    auto getApiBase = (decltype(&OrtGetApiBase))GetProcAddress(onnxruntimeModule, "OrtGetApiBase");
-    if (getApiBase == nullptr) {
-        DWORD error = GetLastError();
-        log("Failed to get OrtGetApiBase. Error code: " + std::to_string(error));
-        return false;
-    }
-    log("Successfully got OrtGetApiBase");
-
-    // 尝试调用 OrtGetApiBase
-    const OrtApiBase* ortApiBase = getApiBase();
-    if (ortApiBase == nullptr) {
-        log("OrtGetApiBase returned nullptr");
-        return false;
-    }
-    log("Successfully called OrtGetApiBase");
-
-    isDllLoaded = true;
-    return true;
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
-    switch (ul_reason_for_call) {
-    case DLL_PROCESS_ATTACH:
-        initializeLogFile(); // 初始化日志文件
-        log("DLL_PROCESS_ATTACH");
-        if (!loadOnnxRuntime()) {
-            return FALSE;
-        }
-        log("onnxruntime.dll loaded successfully");
-        break;
-    case DLL_THREAD_ATTACH:
-    case DLL_THREAD_DETACH:
-        break;
-    case DLL_PROCESS_DETACH:
-        log("DLL_PROCESS_DETACH");
-        if (onnxruntimeModule != NULL) {
-            FreeLibrary(onnxruntimeModule);
-            log("onnxruntime.dll unloaded");
-            isDllLoaded = false;
-        }
-        break;
-    }
-    return TRUE;
-}
-
+// 修改 FaceDetector 构造函数
 class FaceDetector {
 public:
     FaceDetector(const char* modelPath, ModelType type) 
@@ -129,20 +76,9 @@ public:
             log("模型路径: " + std::string(modelPath));
             log("模型类型: " + std::to_string(static_cast<int>(type)));
 
-            log("准备创建Ort::Env");
-            try {
-                env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "FaceDetector");
-                log("Ort::Env创建成功");
-            } catch (const Ort::Exception& e) {
-                log("Ort::Env创建失败: " + std::string(e.what()));
-                throw;
-            } catch (const std::exception& e) {
-                log("Ort::Env创建时发生标准异常: " + std::string(e.what()));
-                throw;
-            } catch (...) {
-                log("Ort::Env创建时发生未知异常");
-                throw;
-            }
+            // 首先获取全局 Ort::Env
+            Ort::Env& env = getGlobalOrtEnv();
+            log("获取全局Ort::Env成功");
 
             log("初始化FaceDetector");
             fs::path fullPath = fs::absolute(modelPath);
@@ -159,6 +95,7 @@ public:
             log("模型路径转换成功");
 
             log("创建Ort::Session");
+            // 使用全局 env 创建 session
             m_session = std::make_unique<Ort::Session>(env, wideModelPath.c_str(), session_options);
             log("Ort::Session创建成功");
 
@@ -270,7 +207,6 @@ private:
         }
     }
 
-    Ort::Env env;
     std::unique_ptr<Ort::Session> m_session;
     ModelType m_type;
 };
@@ -282,6 +218,7 @@ struct DetectionResult {
     std::vector<std::vector<float>> face_features;
 };
 
+// 修改 ArcFaceExtractor 构造函数
 class ArcFaceExtractor {
 public:
     ArcFaceExtractor(const char* modelPath) {
@@ -289,7 +226,7 @@ public:
             fs::path fullPath = fs::absolute(modelPath);
             std::cout << "正在加载 ArcFace 模型: " << fullPath.string() << std::endl;
             
-            Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "ArcFaceExtractor");
+            Ort::Env& env = getGlobalOrtEnv();
             Ort::SessionOptions session_options;
             session_options.SetIntraOpNumThreads(1);
             session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
@@ -524,4 +461,21 @@ std::wstring ConvertToWideString(const std::string& multibyteStr) {
         throw std::runtime_error("Failed to convert to wide string.");
     }
     return wideStr;
+}
+
+// 修改 DllMain 函数
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+        initializeLogFile();
+        log("DLL_PROCESS_ATTACH");
+        break;
+    case DLL_THREAD_ATTACH:
+    case DLL_THREAD_DETACH:
+        break;
+    case DLL_PROCESS_DETACH:
+        log("DLL_PROCESS_DETACH");
+        break;
+    }
+    return TRUE;
 }

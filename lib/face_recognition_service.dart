@@ -67,23 +67,9 @@ class FaceRecognitionService {
       _isInitialized = true;
       print("FaceRecognitionService 初始化成功");
 
-      // 只打印一次日志
-      _readAndPrintLog();
     } catch (e) {
       print('FaceRecognitionService 初始化失败: $e');
       rethrow;
-    }
-  }
-
-  static Future<void> _readAndPrintLog() async {
-    if (!_logPrinted) {
-      try {
-        final logContent = await readLogFile();
-        print("C++ Log: $logContent");
-        _logPrinted = true;
-      } catch (e) {
-        print("Error reading log file: $e");
-      }
     }
   }
 
@@ -288,26 +274,6 @@ class FaceRecognitionService {
     return Uri.encodeFull(path);
   }
 
-  static Future<String> readLogFile() async {
-    try {
-      final file = File('face_recognition_log.txt');
-      if (await file.exists()) {
-        return await file.readAsString();
-      }
-    } catch (e) {
-      print("Error reading log file: $e");
-    }
-    return 'Log file not found or empty';
-  }
-
-  static Future<void> clearLogFile() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final logFile = File(
-        '${directory.path}${Platform.pathSeparator}face_recognition_log.txt');
-    if (await logFile.exists()) {
-      await logFile.delete();
-    }
-  }
 }
 
 class FaceData {
