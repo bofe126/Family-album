@@ -1,4 +1,4 @@
-#include <onnxruntime_cxx_api.h>
+#include <onnxruntime_c_api.h>
 #define NOMINMAX
 #include <algorithm>
 #include <opencv2/opencv.hpp>
@@ -18,6 +18,7 @@
 
 // 函数声明
 std::wstring ConvertToWideString(const std::string& multibyteStr);
+void setLocale();
 
 enum class ModelType {
     YOLOV5,
@@ -56,17 +57,22 @@ void log(const std::string& message) {
     logfile.flush(); // 确保立即写入文件
 }
 
-// 在文件开头添加全局 Ort::Env
-Ort::Env& getGlobalOrtEnv() {
-    std::string version = Ort::GetVersionString();
-    log("ONNX Runtime版本: " + version);
+// 全局 OrtEnv
+OrtEnv* g_ort_env = nullptr;
+const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
-    static Ort::Env env;
-    return env;
-
+OrtEnv* getGlobalOrtEnv() {
+    if (g_ort_env == nullptr) {
+        OrtStatus* status = g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "GlobalOrtEnv", &g_ort_env);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to create OrtEnv: ") + error_message);
+        }
+    }
+    return g_ort_env;
 }
 
-// 修改 FaceDetector 构造函数
 class FaceDetector {
 public:
     FaceDetector(const char* modelPath, ModelType type) 
@@ -76,57 +82,69 @@ public:
             log("模型路径: " + std::string(modelPath));
             log("模型类型: " + std::to_string(static_cast<int>(type)));
 
-            // 首先获取全局 Ort::Env
-            Ort::Env& env = getGlobalOrtEnv();
-            log("获取全局Ort::Env成功");
+            OrtEnv* env = getGlobalOrtEnv();
+            log("获取全局OrtEnv成功");
 
             log("初始化FaceDetector");
             fs::path fullPath = fs::absolute(modelPath);
             log("完整模型路径: " + fullPath.string());
 
-            log("创建Ort::SessionOptions");
-            Ort::SessionOptions session_options;
-            session_options.SetIntraOpNumThreads(1);
-            session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-            log("Ort::SessionOptions创建成功");
+            OrtSessionOptions* session_options;
+            OrtStatus* status = g_ort->CreateSessionOptions(&session_options);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                throw std::runtime_error(std::string("Failed to create session options: ") + error_message);
+            }
 
-            log("转换模型路径为宽字符串");
+            g_ort->SetIntraOpNumThreads(session_options, 1);
+            g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_EXTENDED);
+
             std::wstring wideModelPath = ConvertToWideString(fullPath.string());
-            log("模型路径转换成功");
+            status = g_ort->CreateSession(env, wideModelPath.c_str(), session_options, &m_session);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                g_ort->ReleaseSessionOptions(session_options);
+                throw std::runtime_error(std::string("Failed to create session: ") + error_message);
+            }
 
-            log("创建Ort::Session");
-            // 使用全局 env 创建 session
-            m_session = std::make_unique<Ort::Session>(env, wideModelPath.c_str(), session_options);
-            log("Ort::Session创建成功");
+            g_ort->ReleaseSessionOptions(session_options);
+            log("OrtSession创建成功");
 
             // 打印模型信息
-            Ort::AllocatorWithDefaultOptions allocator;
-            size_t num_input_nodes = m_session->GetInputCount();
-            size_t num_output_nodes = m_session->GetOutputCount();
+            size_t num_input_nodes;
+            status = g_ort->SessionGetInputCount(m_session, &num_input_nodes);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                throw std::runtime_error(std::string("Failed to get input count: ") + error_message);
+            }
+
+            size_t num_output_nodes;
+            status = g_ort->SessionGetOutputCount(m_session, &num_output_nodes);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                throw std::runtime_error(std::string("Failed to get output count: ") + error_message);
+            }
 
             log("输入节点数量: " + std::to_string(num_input_nodes));
             log("输出节点数量: " + std::to_string(num_output_nodes));
 
-            for (size_t i = 0; i < num_input_nodes; i++) {
-                auto input_name = m_session->GetInputNameAllocated(i, allocator);
-                log("输入 " + std::to_string(i) + " 名称: " + input_name.get());
-            }
-
-            for (size_t i = 0; i < num_output_nodes; i++) {
-                auto output_name = m_session->GetOutputNameAllocated(i, allocator);
-                log("输出 " + std::to_string(i) + " 名称: " + output_name.get());
-            }
-
             log("FaceDetector初始化成功");
-        } catch (const Ort::Exception& e) {
-            log("ONNX Runtime错误: " + std::string(e.what()));
-            throw;
         } catch (const std::exception& e) {
-            log("标准异常: " + std::string(e.what()));
+            log("错误: " + std::string(e.what()));
             throw;
         } catch (...) {
             log("未知异常");
             throw;
+        }
+    }
+
+    ~FaceDetector() {
+        if (m_session != nullptr) {
+            g_ort->ReleaseSession(m_session);
         }
     }
 
@@ -136,44 +154,142 @@ public:
 
 private:
     std::vector<cv::Rect> detectYOLOV5(const cv::Mat& image) {
+        log("进入 detectYOLOV5 函数");
         const int inputWidth = 640;
         const int inputHeight = 640;
         
+        log("原始图像尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows) + ", 类型: " + std::to_string(image.type()));
         cv::Mat resized;
         cv::resize(image, resized, cv::Size(inputWidth, inputHeight));
         cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
+        log("调整后的图像尺寸: " + std::to_string(resized.cols) + "x" + std::to_string(resized.rows) + ", 类型: " + std::to_string(resized.type()));
 
         std::vector<float> input_tensor(resized.total() * resized.channels());
         resized.convertTo(input_tensor, CV_32F, 1.0f / 255.0f);
+        log("输入张量大小: " + std::to_string(input_tensor.size()));
 
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        OrtMemoryInfo* memory_info;
+        OrtStatus* status = g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to create CPU memory info: ") + error_message);
+        }
+
         std::array<int64_t, 4> input_shape = {1, 3, inputHeight, inputWidth};
-        Ort::Value input_tensor_ort = Ort::Value::CreateTensor<float>(memory_info, input_tensor.data(), input_tensor.size(), input_shape.data(), input_shape.size());
+        log("输入形状: 1x3x" + std::to_string(inputHeight) + "x" + std::to_string(inputWidth));
+
+        OrtValue* input_tensor_ort;
+        status = g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_tensor.data(), input_tensor.size() * sizeof(float), 
+                                                           input_shape.data(), input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor_ort);
+        g_ort->ReleaseMemoryInfo(memory_info);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to create input tensor: ") + error_message);
+        }
 
         const char* input_names[] = {"images"};
         const char* output_names[] = {"output"};
+        OrtValue* output_tensor = nullptr;
+        log("开始运行 YOLO 模型");
+        status = g_ort->Run(m_session, nullptr, input_names, &input_tensor_ort, 1, output_names, 1, &output_tensor);
+        g_ort->ReleaseValue(input_tensor_ort);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to run inference: ") + error_message);
+        }
+        log("YOLO 模型运行完成");
 
-        auto output_tensors = m_session->Run(Ort::RunOptions{nullptr}, input_names, &input_tensor_ort, 1, output_names, 1);
+        // 检查输出张量的形状和内容
+        OrtTensorTypeAndShapeInfo* output_info;
+        g_ort->GetTensorTypeAndShape(output_tensor, &output_info);
+        size_t output_dim_count;
+        g_ort->GetDimensionsCount(output_info, &output_dim_count);
+        std::vector<int64_t> output_dims(output_dim_count);
+        g_ort->GetDimensions(output_info, output_dims.data(), output_dim_count);
+        g_ort->ReleaseTensorTypeAndShapeInfo(output_info);
+
+        std::string output_shape = "YOLO 输出张量形状: ";
+        for (size_t i = 0; i < output_dim_count; ++i) {
+            output_shape += std::to_string(output_dims[i]) + (i < output_dim_count - 1 ? "x" : "");
+        }
+        log(output_shape);
+
+        // 获取输出数据
+        float* output_data;
+        status = g_ort->GetTensorMutableData(output_tensor, (void**)&output_data);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to get output tensor data: ") + error_message);
+        }
+
+        // 输出前几个元素的值
+        log("YOLO 输出前10个元素:");
+        for (int i = 0; i < 10 && i < output_dims[0] * output_dims[1] * output_dims[2]; ++i) {
+            log("  Element " + std::to_string(i) + ": " + std::to_string(output_data[i]));
+        }
 
         std::vector<cv::Rect> faces;
-        processPredictions(output_tensors[0], image.cols, image.rows, faces);
+        log("开始处理 YOLO 输出");
+        processPredictions(output_tensor, image.cols, image.rows, faces);
+        g_ort->ReleaseValue(output_tensor);
+        log("检测到 " + std::to_string(faces.size()) + " 个人脸");
 
         return faces;
     }
 
-    void processPredictions(const Ort::Value& output_tensor, int orig_width, int orig_height, std::vector<cv::Rect>& faces) {
-        Ort::TypeInfo type_info = output_tensor.GetTypeInfo();
-        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    void processPredictions(OrtValue* output_tensor, int orig_width, int orig_height, std::vector<cv::Rect>& faces) {
+        log("进入 processPredictions 函数");
+        log("原始图像尺寸: " + std::to_string(orig_width) + "x" + std::to_string(orig_height));
 
-        auto shape = tensor_info.GetShape();
+        OrtTensorTypeAndShapeInfo* tensor_info;
+        OrtStatus* status = g_ort->GetTensorTypeAndShape(output_tensor, &tensor_info);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to get tensor info: ") + error_message);
+        }
 
-        const float* output_data = output_tensor.GetTensorData<float>();
+        size_t dim_count;
+        g_ort->GetDimensionsCount(tensor_info, &dim_count);
+        std::vector<int64_t> dims(dim_count);
+        g_ort->GetDimensions(tensor_info, dims.data(), dim_count);
+        
+        ONNXTensorElementDataType tensor_type;
+        g_ort->GetTensorElementType(tensor_info, &tensor_type);
+        log("输出张量数据类型: " + std::to_string(tensor_type));
+        
+        g_ort->ReleaseTensorTypeAndShapeInfo(tensor_info);
+
+        log("输出张量维度: " + std::to_string(dim_count));
+        std::string dims_str = "";
+        for (size_t i = 0; i < dim_count; ++i) {
+            dims_str += std::to_string(dims[i]) + (i < dim_count - 1 ? "x" : "");
+        }
+        log("输出张量形状: " + dims_str);
+
+        float* output_data;
+        status = g_ort->GetTensorMutableData(output_tensor, (void**)&output_data);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to get tensor data: ") + error_message);
+        }
 
         // YOLOv5 输出形状应该是 [1, num_boxes, 85]
-        int64_t num_boxes = shape[1];
+        if (dim_count != 3 || dims[2] != 85) {
+            throw std::runtime_error("Unexpected YOLO output shape: " + dims_str);
+        }
+
+        int64_t num_boxes = dims[1];
+        log("检测框数量: " + std::to_string(num_boxes));
 
         float conf_threshold = 0.25f;  // 置信度阈值
         float iou_threshold = 0.45f;   // IOU阈值
+        log("置信度阈值: " + std::to_string(conf_threshold) + ", IOU阈值: " + std::to_string(iou_threshold));
 
         std::vector<cv::Rect> boxes;
         std::vector<float> confidences;
@@ -195,19 +311,42 @@ private:
 
                 boxes.push_back(cv::Rect(left, top, width, height));
                 confidences.push_back(confidence);
+
+                log("检测到人脸 #" + std::to_string(boxes.size()) + ": 位置(" + 
+                    std::to_string(left) + "," + std::to_string(top) + "), 大小(" + 
+                    std::to_string(width) + "x" + std::to_string(height) + "), 置信度: " + 
+                    std::to_string(confidence));
             }
         }
 
+        log("初步检测到 " + std::to_string(boxes.size()) + " 个可能的人脸");
+
+        if (boxes.empty()) {
+            log("没有检测到任何人脸，跳过 NMS");
+            return;
+        }
+
         std::vector<int> indices;
-        cv::dnn::NMSBoxes(boxes, confidences, conf_threshold, iou_threshold, indices);
+        try {
+            cv::dnn::NMSBoxes(boxes, confidences, conf_threshold, iou_threshold, indices);
+        } catch (const cv::Exception& e) {
+            log("OpenCV 错误: " + std::string(e.what()));
+            throw;
+        }
 
         faces.clear();
         for (int idx : indices) {
             faces.push_back(boxes[idx]);
+            log("NMS 后保留的人脸 #" + std::to_string(faces.size()) + ": 位置(" + 
+                std::to_string(boxes[idx].x) + "," + std::to_string(boxes[idx].y) + "), 大小(" + 
+                std::to_string(boxes[idx].width) + "x" + std::to_string(boxes[idx].height) + "), 置信度: " + 
+                std::to_string(confidences[idx]));
         }
+
+        log("NMS 后保留 " + std::to_string(faces.size()) + " 个人脸");
     }
 
-    std::unique_ptr<Ort::Session> m_session;
+    OrtSession* m_session;
     ModelType m_type;
 };
 
@@ -218,7 +357,6 @@ struct DetectionResult {
     std::vector<std::vector<float>> face_features;
 };
 
-// 修改 ArcFaceExtractor 构造函数
 class ArcFaceExtractor {
 public:
     ArcFaceExtractor(const char* modelPath) {
@@ -226,42 +364,62 @@ public:
             fs::path fullPath = fs::absolute(modelPath);
             std::cout << "正在加载 ArcFace 模型: " << fullPath.string() << std::endl;
             
-            Ort::Env& env = getGlobalOrtEnv();
-            Ort::SessionOptions session_options;
-            session_options.SetIntraOpNumThreads(1);
-            session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+            OrtEnv* env = getGlobalOrtEnv();
+            OrtSessionOptions* session_options;
+            OrtStatus* status = g_ort->CreateSessionOptions(&session_options);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                throw std::runtime_error(std::string("Failed to create session options: ") + error_message);
+            }
+
+            g_ort->SetIntraOpNumThreads(session_options, 1);
+            g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_EXTENDED);
 
             std::wstring wideModelPath = ConvertToWideString(fullPath.string());
-            m_session = std::make_unique<Ort::Session>(env, wideModelPath.c_str(), session_options);
+            status = g_ort->CreateSession(env, wideModelPath.c_str(), session_options, &m_session);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                g_ort->ReleaseSessionOptions(session_options);
+                throw std::runtime_error(std::string("Failed to create session: ") + error_message);
+            }
+
+            g_ort->ReleaseSessionOptions(session_options);
 
             // 打印模型信息
-            Ort::AllocatorWithDefaultOptions allocator;
-            size_t num_input_nodes = m_session->GetInputCount();
-            size_t num_output_nodes = m_session->GetOutputCount();
+            size_t num_input_nodes;
+            status = g_ort->SessionGetInputCount(m_session, &num_input_nodes);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                throw std::runtime_error(std::string("Failed to get input count: ") + error_message);
+            }
+
+            size_t num_output_nodes;
+            status = g_ort->SessionGetOutputCount(m_session, &num_output_nodes);
+            if (status != nullptr) {
+                const char* error_message = g_ort->GetErrorMessage(status);
+                g_ort->ReleaseStatus(status);
+                throw std::runtime_error(std::string("Failed to get output count: ") + error_message);
+            }
 
             std::cout << "ArcFace 模型输入数量: " << num_input_nodes << std::endl;
             std::cout << "ArcFace 模型输出数量: " << num_output_nodes << std::endl;
 
-            for (size_t i = 0; i < num_input_nodes; i++) {
-                auto input_name = m_session->GetInputNameAllocated(i, allocator);
-                std::cout << "输入 " << i << " 名称: " << input_name.get() << std::endl;
-            }
-
-            for (size_t i = 0; i < num_output_nodes; i++) {
-                auto output_name = m_session->GetOutputNameAllocated(i, allocator);
-                std::cout << "输出 " << i << " 名称: " << output_name.get() << std::endl;
-            }
-
             std::cout << "ArcFace 模型加载成功" << std::endl;
-        } catch (const Ort::Exception& e) {
-            std::cerr << "ONNX Runtime error in ArcFaceExtractor: " << e.what() << std::endl;
-            throw;
         } catch (const std::exception& e) {
-            std::cerr << "Standard exception in ArcFaceExtractor: " << e.what() << std::endl;
+            std::cerr << "ArcFaceExtractor 错误: " << e.what() << std::endl;
             throw;
         } catch (...) {
-            std::cerr << "Unknown exception in ArcFaceExtractor" << std::endl;
+            std::cerr << "ArcFaceExtractor 未知异常" << std::endl;
             throw;
+        }
+    }
+
+    ~ArcFaceExtractor() {
+        if (m_session != nullptr) {
+            g_ort->ReleaseSession(m_session);
         }
     }
 
@@ -273,97 +431,131 @@ public:
         std::vector<float> input_tensor(resized_face.total() * resized_face.channels());
         resized_face.convertTo(input_tensor, CV_32F, 1.0f / 255.0f);
 
-        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        OrtMemoryInfo* memory_info;
+        OrtStatus* status = g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to create CPU memory info: ") + error_message);
+        }
+
         std::array<int64_t, 4> input_shape = {1, 3, 112, 112};
-        Ort::Value input_tensor_ort = Ort::Value::CreateTensor<float>(memory_info, input_tensor.data(), input_tensor.size(), input_shape.data(), input_shape.size());
+        OrtValue* input_tensor_ort;
+        status = g_ort->CreateTensorWithDataAsOrtValue(memory_info, input_tensor.data(), input_tensor.size() * sizeof(float), 
+                                                           input_shape.data(), input_shape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &input_tensor_ort);
+        g_ort->ReleaseMemoryInfo(memory_info);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to create input tensor: ") + error_message);
+        }
 
         const char* input_names[] = {"input"};
         const char* output_names[] = {"output"};
+        OrtValue* output_tensor = nullptr;
+        status = g_ort->Run(m_session, nullptr, input_names, &input_tensor_ort, 1, output_names, 1, &output_tensor);
+        g_ort->ReleaseValue(input_tensor_ort);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            throw std::runtime_error(std::string("Failed to run inference: ") + error_message);
+        }
 
-        auto output_tensors = m_session->Run(Ort::RunOptions{nullptr}, input_names, &input_tensor_ort, 1, output_names, 1);
+        OrtTensorTypeAndShapeInfo* tensor_info;
+        status = g_ort->GetTensorTypeAndShape(output_tensor, &tensor_info);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            g_ort->ReleaseValue(output_tensor);
+            throw std::runtime_error(std::string("Failed to get tensor info: ") + error_message);
+        }
 
-        Ort::TypeInfo type_info = output_tensors[0].GetTypeInfo();
-        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        size_t dim_count;
+        g_ort->GetDimensionsCount(tensor_info, &dim_count);
+        std::vector<int64_t> dims(dim_count);
+        g_ort->GetDimensions(tensor_info, dims.data(), dim_count);
+        g_ort->ReleaseTensorTypeAndShapeInfo(tensor_info);
 
-        auto shape = tensor_info.GetShape();
+        float* output_data;
+        status = g_ort->GetTensorMutableData(output_tensor, (void**)&output_data);
+        if (status != nullptr) {
+            const char* error_message = g_ort->GetErrorMessage(status);
+            g_ort->ReleaseStatus(status);
+            g_ort->ReleaseValue(output_tensor);
+            throw std::runtime_error(std::string("Failed to get tensor data: ") + error_message);
+        }
 
-        std::vector<float> output_vector(shape[0] * shape[1]);
-        const float* output_data = output_tensors[0].GetTensorData<float>();
+        std::vector<float> output_vector(dims[0] * dims[1]);
         std::copy(output_data, output_data + output_vector.size(), output_vector.begin());
 
+        g_ort->ReleaseValue(output_tensor);
         return output_vector;
     }
 
 private:
-    std::unique_ptr<Ort::Session> m_session;
+    OrtSession* m_session;
 };
 
 cv::Mat loadImage(const std::string& filename) {
-    std::cout << "正在尝试加载图像: " << filename << std::endl;
-
-    HANDLE hFile = CreateFileA(filename.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        std::cerr << "CreateFileA failed. Error code: " << GetLastError() << std::endl;
-        throw std::runtime_error("无法打开文件: " + filename);
+    try {
+        fs::path filePath(filename);
+        log("尝试加载图像: " + filePath.string());
+        
+        if (!fs::exists(filePath)) {
+            log("文件不存在: " + filePath.string());
+            throw std::runtime_error("文件不存在: " + filePath.string());
+        }
+        
+        cv::Mat image = cv::imread(filePath.string(), cv::IMREAD_COLOR);
+        if (image.empty()) {
+            log("无法解码图像: " + filePath.string());
+            throw std::runtime_error("无法解码图像: " + filePath.string());
+        }
+        
+        log("成功加载图像: " + filePath.string() + ", 尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
+        return image;
+    } catch (const std::exception& e) {
+        log("加载图像时发生异常: " + std::string(e.what()));
+        throw;
     }
-
-    DWORD fileSize = GetFileSize(hFile, NULL);
-    if (fileSize == INVALID_FILE_SIZE) {
-        CloseHandle(hFile);
-        std::cerr << "GetFileSize failed. Error code: " << GetLastError() << std::endl;
-        throw std::runtime_error("无法获取文件大小: " + filename);
-    }
-
-    std::vector<char> buffer(fileSize);
-    DWORD bytesRead;
-    if (!ReadFile(hFile, buffer.data(), fileSize, &bytesRead, NULL)) {
-        CloseHandle(hFile);
-        std::cerr << "ReadFile failed. Error code: " << GetLastError() << std::endl;
-        throw std::runtime_error("无法读取文件: " + filename);
-    }
-    CloseHandle(hFile);
-
-    cv::Mat data(1, fileSize, CV_8UC1, buffer.data());
-    cv::Mat image = cv::imdecode(data, cv::IMREAD_COLOR);
-    if (image.empty()) {
-        std::cerr << "cv::imdecode failed to decode the image." << std::endl;
-        throw std::runtime_error("无法解码图像: " + filename);
-    }
-
-    std::cout << "成功加载图像: " << filename << std::endl;
-    return image;
 }
 
 DetectionResult detect_faces_impl(const std::string& image_path, const char* yolov5_model_path, const char* arcface_model_path, int max_faces) {
     try {
-        std::wofstream logFile("face_recognition_log.txt", std::ios::app);
-        std::wcout.rdbuf(logFile.rdbuf());
+        log("开始处理图像: " + image_path);
+        
+        cv::Mat image = loadImage(image_path);
+        if (image.empty()) {
+            log("图像加载失败: " + image_path);
+            throw std::runtime_error("无法加载图像: " + image_path);
+        }
+        
+        log("图像加载成功，尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
 
-        std::cout << "YOLOV5 模型路径: " << yolov5_model_path << std::endl;
-        std::cout << "ArcFace 模型路径: " << arcface_model_path << std::endl;
+        log("YOLOV5 模型路径: " + std::string(yolov5_model_path));
+        log("ArcFace 模型路径: " + std::string(arcface_model_path));
 
         // 检查模型文件是否存在
         if (!fs::exists(yolov5_model_path)) {
-            std::cerr << "YOLOV5 模型文件不存在: " << yolov5_model_path << std::endl;
-            //throw std::runtime_error("YOLOV5模型文件不存在");
+            log("YOLOV5 模型文件不存在: " + std::string(yolov5_model_path));
+            throw std::runtime_error("YOLOV5模型文件不存在");
         }
         if (!fs::exists(arcface_model_path)) {
-            std::cerr << "ArcFace 模型文件不存在: " << arcface_model_path << std::endl;
-            //throw std::runtime_error("ArcFace模型文件不存在");
+            log("ArcFace 模型文件不存在: " + std::string(arcface_model_path));
+            throw std::runtime_error("ArcFace模型文件不存在");
         }
 
-        cv::Mat image = loadImage(image_path);
-        if (image.empty()) {
-            std::string error_message = "无法加载图像: " + image_path;
-            std::cerr << error_message << std::endl;
-            throw std::runtime_error(error_message);
-        }
-
-        std::cout << "正在创建 FaceDetector..." << std::endl;
+        log("正在创建 FaceDetector...");
         static FaceDetector detector(yolov5_model_path, ModelType::YOLOV5);
-        std::cout << "正在创建 ArcFaceExtractor..." << std::endl;
+        log("FaceDetector 创建成功");
+
+        log("正在创建 ArcFaceExtractor...");
         static ArcFaceExtractor arcface_extractor(arcface_model_path);
+        log("ArcFaceExtractor 创建成功");
+
+        log("开始检测人脸");
         std::vector<cv::Rect> detected_faces = detector.detect(image);
+        log("检测到 " + std::to_string(detected_faces.size()) + " 个人脸");
 
         DetectionResult result;
         result.num_faces = std::min(static_cast<int>(detected_faces.size()), max_faces);
@@ -371,15 +563,30 @@ DetectionResult detect_faces_impl(const std::string& image_path, const char* yol
         #pragma omp parallel for
         for (int i = 0; i < result.num_faces; i++) {
             cv::Rect face = detected_faces[i];
-            // 为了线程安全，使用局部变量并在结束时合并
+            log("处理第 " + std::to_string(i+1) + " 个人脸");
+
             std::vector<uint8_t> local_face_data;
             std::vector<float> local_face_features;
 
             cv::Mat face_image = image(face);
-            cv::imencode(".jpg", face_image, local_face_data);
-            local_face_features = arcface_extractor.extract(face_image);
+            if (face_image.empty()) {
+                log("无法提取人脸图像");
+                continue;
+            }
 
-            // 保护共享资源的访问
+            cv::imencode(".jpg", face_image, local_face_data);
+            if (local_face_data.empty()) {
+                log("人脸图像编码失败");
+                continue;
+            }
+
+            try {
+                local_face_features = arcface_extractor.extract(face_image);
+            } catch (const std::exception& e) {
+                log("特征提取失败: " + std::string(e.what()));
+                continue;
+            }
+
             #pragma omp critical
             {
                 result.faces.push_back(face);
@@ -388,13 +595,13 @@ DetectionResult detect_faces_impl(const std::string& image_path, const char* yol
             }
         }
 
-        logFile.close();
+        log("人脸检测和特征提取完成");
         return result;
     } catch (const std::exception& e) {
-        std::cerr << "Exception in detect_faces_impl: " << e.what() << std::endl;
+        log("detect_faces_impl 异常: " + std::string(e.what()));
         throw;
     } catch (...) {
-        std::cerr << "Unknown exception in detect_faces_impl" << std::endl;
+        log("detect_faces_impl 未知异常");
         throw;
     }
 }
@@ -446,21 +653,11 @@ extern "C" __declspec(dllexport) float compare_faces(float* features1, float* fe
 }
 
 // 函数定义
-std::wstring ConvertToWideString(const std::string& multibyteStr) {
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, multibyteStr.c_str(),
-                                         static_cast<int>(multibyteStr.length()), 
-                                         nullptr, 0);
-    if (size_needed == 0) {
-        throw std::runtime_error("Failed to calculate wide string size.");
-    }
-    std::wstring wideStr(size_needed, 0);
-    int result = MultiByteToWideChar(CP_UTF8, 0, multibyteStr.c_str(),
-                                     static_cast<int>(multibyteStr.length()), 
-                                     &wideStr[0], size_needed);
-    if (result == 0) {
-        throw std::runtime_error("Failed to convert to wide string.");
-    }
-    return wideStr;
+std::wstring ConvertToWideString(const std::string& str) {
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+    std::wstring wstrTo(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+    return wstrTo;
 }
 
 // 修改 DllMain 函数
@@ -468,6 +665,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
         initializeLogFile();
+        setLocale();  // 在这里调用 setLocale
         log("DLL_PROCESS_ATTACH");
         break;
     case DLL_THREAD_ATTACH:
@@ -478,4 +676,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
         break;
     }
     return TRUE;
+}
+
+// 在文件末尾添加 setLocale 函数定义
+void setLocale() {
+    std::setlocale(LC_ALL, "en_US.UTF-8");
 }
