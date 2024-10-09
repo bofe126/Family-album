@@ -21,7 +21,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FaceRecognitionService.initialize();
   
-  final logger = getLogger();  // 使用 getLogger() 函数获取 logger 实例
+  // 使用全局 logger 实例
+  logger.i('应用程序启动');
   FlutterError.onError = (FlutterErrorDetails details) {
     logger.e('未捕获的Flutter错误: ${details.exception}');
   };

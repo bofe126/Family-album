@@ -33,32 +33,35 @@ typedef CompareFacesC = Float Function(
 typedef CompareFacesDart = double Function(
     Pointer<Float> features1, Pointer<Float> features2, int featureSize);
 
+class FaceRecognitionConfig {
+  static const String dllPath = 'face_recognition.dll';
+  static const String yolov5ModelPath = 'assets/yolov5l.onnx';
+  static const String arcfaceModelPath = 'assets/arcface_model.onnx';
+  static const int maxFaces = 10;
+}
+
+class FaceRecognitionException implements Exception {
+  final String message;
+  FaceRecognitionException(this.message);
+  @override
+  String toString() => 'FaceRecognitionException: $message';
+}
+
 class FaceRecognitionService {
-  static final logger = getLogger(); // 使用函数调用来获取 logger 实例
+  static final _logger = logger;  // 这里使用从 logger.dart 导入的全局 logger 实例
   static late DynamicLibrary _lib;
   static late DetectFacesDart _detectFaces;
   static late CompareFacesDart _compareFaces;
   static bool _isInitialized = false;
-  static late String _dllPath;
-  static late String _yolov5ModelPath;
-  static late String _arcfaceModelPath;
-  static bool _logPrinted = false;
 
   static bool get isInitialized => _isInitialized;
 
   static Future<void> initialize() async {
     if (_isInitialized) return;
     try {
-      logger.i("正在初始化 FaceRecognitionService");
+      _logger.i('FaceRecognitionService: initialization_start');
 
-      _dllPath = 'face_recognition.dll';
-      _yolov5ModelPath = 'assets/yolov5l.onnx';
-      _arcfaceModelPath = 'assets/arcface_model.onnx';
-
-      logger.i("正在尝试加载 face_recognition.dll...");
-      _lib = DynamicLibrary.open(_dllPath);
-      logger.i("成功加载 DLL: $_dllPath");
-
+      _lib = DynamicLibrary.open(FaceRecognitionConfig.dllPath);
       _detectFaces = _lib
           .lookup<NativeFunction<DetectFacesC>>('detect_faces')
           .asFunction();
@@ -67,119 +70,92 @@ class FaceRecognitionService {
           .asFunction();
 
       _isInitialized = true;
-      logger.i("FaceRecognitionService 初始化成功");
+      _logger.i('FaceRecognitionService: initialization_success');
     } catch (e) {
-      logger.e('FaceRecognitionService 初始化失败: $e'); // 移除 error 参数
+      _logger.e(
+          'FaceRecognitionService: initialization_failure - ${e.toString()}');
       rethrow;
     }
   }
 
   static Future<List<FaceData>> recognizeFaces(List<String> imagePaths) async {
-    final List<FaceData> allFaces = [];
-    logger.i("开始处理 ${imagePaths.length} 张图片");
-    for (final imagePath in imagePaths) {
-      try {
-        logger.i("正在处理图像: $imagePath");
-        final faces = await _detectFacesInImage(imagePath);
-        allFaces.addAll(faces);
-        logger.i("在 $imagePath 中检测到 ${faces.length} 个人脸");
-      } catch (e) {
-        logger.e("处理图像 $imagePath 时出错: $e"); // 移除 error 参数
-      }
-    }
-    logger.i("所有图片处理完成，共检测到 ${allFaces.length} 个人脸");
+    _logger.i('Face recognition: start=${imagePaths.length}');
+    final futures = imagePaths.map((path) => _detectFacesInImage(path));
+    final results = await Future.wait(futures);
+    final allFaces = results.expand((faces) => faces).toList();
+    _logger.i('Face recognition: complete=${allFaces.length}');
     return allFaces;
   }
 
   static Future<List<FaceData>> _detectFacesInImage(String imagePath) async {
+    final stopwatch = Stopwatch()..start();
     try {
       final normalizedPath = _normalizePath(imagePath);
-      logger.i("正在处理图像路径: $normalizedPath");
+      _logger.i('Face detection: start=$normalizedPath');
 
-      // 检查图像文件是否存在
       if (!await File(normalizedPath).exists()) {
-        logger.w("图像文件不存在: $normalizedPath");
-        return [];
+        throw FaceRecognitionException("图像文件不存在: $normalizedPath");
       }
 
-      // 检查模型文件是否存在
-      if (!await File(_yolov5ModelPath).exists()) {
-        logger.w("YOLOV5 模型文件不存在: $_yolov5ModelPath");
-        return [];
-      }
-      if (!await File(_arcfaceModelPath).exists()) {
-        logger.w("ArcFace 模型文件不存在: $_arcfaceModelPath");
-        return [];
+      if (!await File(FaceRecognitionConfig.yolov5ModelPath).exists()) {
+        throw FaceRecognitionException(
+            "YOLOV5 模型文件不存在: ${FaceRecognitionConfig.yolov5ModelPath}");
       }
 
-      final maxFaces = 10;
-      final facesPtr = calloc<Int32>(maxFaces * 4);
-      final faceDataPtr = calloc<Pointer<Uint8>>(maxFaces);
-      final faceDataSizesPtr = calloc<Int32>(maxFaces);
-      final faceFeaturesPtr = calloc<Pointer<Float>>(maxFaces);
+      if (!await File(FaceRecognitionConfig.arcfaceModelPath).exists()) {
+        throw FaceRecognitionException(
+            "ArcFace 模型文件不存在: ${FaceRecognitionConfig.arcfaceModelPath}");
+      }
 
-      try {
-        logger.i("YOLOV5 模型路径: $_yolov5ModelPath");
-        logger.i("ArcFace 模型路径: $_arcfaceModelPath");
+      final List<FaceData> detectedFaces = [];
+
+      using((arena) {
+        final facesPtr = arena<Int32>(FaceRecognitionConfig.maxFaces * 4);
+        final faceDataPtr =
+            arena<Pointer<Uint8>>(FaceRecognitionConfig.maxFaces);
+        final faceDataSizesPtr = arena<Int32>(FaceRecognitionConfig.maxFaces);
+        final faceFeaturesPtr =
+            arena<Pointer<Float>>(FaceRecognitionConfig.maxFaces);
 
         final result = _detectFaces(
-          normalizedPath.toNativeUtf8(),
-          _yolov5ModelPath.toNativeUtf8(),
-          _arcfaceModelPath.toNativeUtf8(),
+          normalizedPath.toNativeUtf8(allocator: arena),
+          FaceRecognitionConfig.yolov5ModelPath.toNativeUtf8(allocator: arena),
+          FaceRecognitionConfig.arcfaceModelPath.toNativeUtf8(allocator: arena),
           facesPtr,
-          maxFaces,
+          FaceRecognitionConfig.maxFaces,
           faceDataPtr,
           faceDataSizesPtr,
           faceFeaturesPtr,
         );
 
-        logger.i("检测到 $result 个人脸");
+        _logger.i('Face detection: result=$result');
 
         if (result < 0) {
-          logger.w("人脸检测失败，错误代码: $result");
-          return [];
+          throw FaceRecognitionException("人脸检测失败，错误代码: $result");
         }
 
-        final List<FaceData> detectedFaces = [];
-
-        logger.i("开始处理检测到的人脸");
         for (int i = 0; i < result; i++) {
-          try {
-            logger.i("正在处理第 ${i + 1} 个人脸");
-            final faceImage = faceDataPtr[i].asTypedList(faceDataSizesPtr[i]);
-            final features = faceFeaturesPtr[i].asTypedList(128);
+          final faceImage = faceDataPtr[i].asTypedList(faceDataSizesPtr[i]);
+          final features = faceFeaturesPtr[i].asTypedList(128);
 
-            detectedFaces.add(FaceData(
-              faceImage: Uint8List.fromList(faceImage),
-              features: Float32List.fromList(features),
-            ));
+          detectedFaces.add(FaceData(
+            faceImage: Uint8List.fromList(faceImage),
+            features: Float32List.fromList(features),
+          ));
 
-            logger.i("成功处理第 ${i + 1} 个人脸");
-
-            calloc.free(faceDataPtr[i]);
-            calloc.free(faceFeaturesPtr[i]);
-          } catch (e) {
-            logger.e("处理第 ${i + 1} 个人脸时出错: $e");
-          }
+          arena.free(faceDataPtr[i]);
+          arena.free(faceFeaturesPtr[i]);
         }
+      });
 
-        logger.i("所有人脸处理完成，共 ${detectedFaces.length} 个");
-
-        return detectedFaces;
-      } catch (e, stackTrace) {
-        logger.e("_detectFacesInImage 出错: $e\n$stackTrace");
-        return [];
-      } finally {
-        logger.i("正在释放内存");
-        calloc.free(facesPtr);
-        calloc.free(faceDataPtr);
-        calloc.free(faceDataSizesPtr);
-        calloc.free(faceFeaturesPtr);
-        logger.i("内存释放完成");
-      }
+      _logger.i('Face detection: processed=${detectedFaces.length}');
+      return detectedFaces;
     } catch (e) {
-      logger.e("_detectFacesInImage 整体处理出错: $e"); // 移除 error 参数
-      return [];
+      _logger.e('Face detection: error=${e.toString()}');
+      rethrow;
+    } finally {
+      stopwatch.stop();
+      _logger.i('Face detection: time=${stopwatch.elapsedMilliseconds}ms');
     }
   }
 
@@ -202,8 +178,10 @@ class FaceRecognitionService {
 
   static Future<List<FaceData>> detectFacesInImage(String imagePath) async {
     final imagePathNative = imagePath.toNativeUtf8();
-    final yolov5ModelPathNative = _yolov5ModelPath.toNativeUtf8();
-    final arcfaceModelPathNative = _arcfaceModelPath.toNativeUtf8();
+    final yolov5ModelPathNative =
+        FaceRecognitionConfig.yolov5ModelPath.toNativeUtf8();
+    final arcfaceModelPathNative =
+        FaceRecognitionConfig.arcfaceModelPath.toNativeUtf8();
 
     final faces = calloc<Int32>(4 * 10);
     final faceData = calloc<Pointer<Uint8>>(10);
@@ -262,6 +240,8 @@ class FaceRecognitionService {
         await file.delete();
       }
     }
+    _lib.close(); // 关闭动态库
+    _isInitialized = false; // 重置初始化状态
   }
 
   static String _normalizePath(String path) {
@@ -278,10 +258,10 @@ class FaceRecognitionService {
 
     for (final asset in assets) {
       final file = File('${directory.path}${Platform.pathSeparator}$asset');
-      logger.i("正在复制资源文件: $asset");
+      _logger.i("Asset copy: start=$asset");
       final byteData = await rootBundle.load('assets/$asset');
       await file.writeAsBytes(byteData.buffer.asUint8List());
-      logger.i("资源文件复制完成: $asset");
+      _logger.i("Asset copy: complete=$asset");
     }
   }
 
