@@ -57,7 +57,6 @@ app.*.map.json
 /third_party/
 
 # Large files
-third_party/onnxruntime-win-x64-1.19.2.zip
 third_party/onnxruntime-win-x64-1.19.2/lib/onnxruntime.pdb
 
 # Windows specific
