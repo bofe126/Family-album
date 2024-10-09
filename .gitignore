@@ -16,10 +16,8 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# Visual Studio Code related
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -42,11 +40,52 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# model and lib
+# Model and lib files
 *.onnx
 *.caffemodel
 *.prototxt
 *.dll
-/face_recognition/build
-/assets
-/face_recognition/build
+
+# Build directories
+/face_recognition/build/
+/build/
+
+# Assets directory
+/assets/
+
+# Third-party libraries
+/third_party/
+
+# Large files
+third_party/onnxruntime-win-x64-1.19.2.zip
+third_party/onnxruntime-win-x64-1.19.2/lib/onnxruntime.pdb
+
+# Windows specific
+*.exe
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# Cache files
+*.cache
+
+# macOS specific
+.DS_Store
+
+# Linux specific
+*~
+
+# Flutter web related
+lib/generated_plugin_registrant.dart
+
+# iOS related
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/.symlinks/
+**/ios/Pods/
