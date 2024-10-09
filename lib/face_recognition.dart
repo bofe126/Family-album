@@ -28,41 +28,50 @@ class _FaceRecognitionState extends State<FaceRecognition> {
   }
 
   Future<void> _recognizeFaces() async {
-    if (widget.imagePaths.isEmpty) {
-      final photoState = Provider.of<PhotoState>(context, listen: false);
-      widget.imagePaths
-          .addAll(photoState.imageFileList.map((file) => file.path));
-    }
+    try {
+      if (widget.imagePaths.isEmpty) {
+        final photoState = Provider.of<PhotoState>(context, listen: false);
+        widget.imagePaths
+            .addAll(photoState.imageFileList.map((file) => file.path));
+      }
 
-    if (widget.imagePaths.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有可识别的照片')),
-      );
-      return;
-    }
+      if (widget.imagePaths.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有可识别的照片')),
+        );
+        return;
+      }
 
-    setState(() {
-      _isRecognizing = true;
-      _detectedFaces = [];
-    });
+      setState(() {
+        _isRecognizing = true;
+        _detectedFaces = [];
+      });
 
-    print("Starting face recognition for ${widget.imagePaths.length} images");
-    for (var path in widget.imagePaths) {
-      print("Processing image: $path");
-    }
+      print("Starting face recognition for ${widget.imagePaths.length} images");
+      for (var path in widget.imagePaths) {
+        print("Processing image: $path");
+      }
 
-    List<FaceData> faceDataList =
-        await FaceRecognitionService.recognizeFaces(widget.imagePaths);
+      List<FaceData> faceDataList =
+          await FaceRecognitionService.recognizeFaces(widget.imagePaths);
 
-    setState(() {
-      _isRecognizing = false;
-      _detectedFaces = faceDataList.map((faceData) => faceData.faceImage).toList();
-    });
+      setState(() {
+        _isRecognizing = false;
+        _detectedFaces = faceDataList.map((faceData) => faceData.faceImage).toList();
+      });
 
-    if (_detectedFaces.length >= 100) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('检测到100张或更多人脸。可能有些人脸未被处理。')),
-      );
+      if (_detectedFaces.length >= 100) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('检测到100张或更多人脸。可能有些人脸未被处理。')),
+        );
+      }
+
+      logger.i("人脸识别完成，共检测到 ${_detectedFaces.length} 个人脸");
+    } catch (e) {
+      logger.e("_recognizeFaces 出错: $e");
+      setState(() {
+        _isRecognizing = false;
+      });
     }
   }
 

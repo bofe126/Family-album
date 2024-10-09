@@ -11,9 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:ffi/ffi.dart';
 import 'dart:ffi';
 import 'package:win32/win32.dart' as win32;
-
-// 仅在Windows平台使用的导入
-import 'package:win32/win32.dart' as win32;
+import 'logger.dart';
 
 // 定义DLL函数类型（仅用于Windows）
 typedef DetectFacesFunc = Pointer<Utf8> Function(Pointer<Utf8>);
@@ -22,6 +20,12 @@ typedef DetectFacesDart = Pointer<Utf8> Function(Pointer<Utf8>);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FaceRecognitionService.initialize();
+  
+  final logger = getLogger();  // 使用 getLogger() 函数获取 logger 实例
+  FlutterError.onError = (FlutterErrorDetails details) {
+    logger.e('未捕获的Flutter错误: ${details.exception}');
+  };
+  
   runApp(const MyApp());
 }
 
