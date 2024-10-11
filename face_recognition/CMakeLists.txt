@@ -50,27 +50,12 @@ add_custom_command(TARGET face_recognition POST_BUILD
         "$<TARGET_FILE_DIR:face_recognition>"
 )
 
-# 定义模型文件的源路径和目标路径
-set(ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../assets")
-set(YOLOV5_MODEL_SOURCE "${ASSETS_DIR}/yolov5l.onnx")
-set(ARCFACE_MODEL_SOURCE "${ASSETS_DIR}/arcface_model.onnx")
-set(YOLOV5_MODEL_DEST "$<TARGET_FILE_DIR:face_recognition>/yolov5l.onnx")
-set(ARCFACE_MODEL_DEST "$<TARGET_FILE_DIR:face_recognition>/arcface_model.onnx")
-
-# 检查源文件是否存在
-if(NOT EXISTS ${YOLOV5_MODEL_SOURCE})
-    message(FATAL_ERROR "Source YOLOV5 model file not found: ${YOLOV5_MODEL_SOURCE}")
-endif()
-if(NOT EXISTS ${ARCFACE_MODEL_SOURCE})
-    message(FATAL_ERROR "Source ArcFace model file not found: ${ARCFACE_MODEL_SOURCE}")
-endif()
-
 # 复制生成的 DLL 文件到 assets 目录
 add_custom_command(
     TARGET face_recognition POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:face_recognition>"
-        "${ASSETS_DIR}/face_recognition.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../assets/face_recognition.dll"
     COMMENT "Copying generated face_recognition.dll to assets directory"
 )
 
@@ -78,7 +63,7 @@ add_custom_command(
 message(STATUS "OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS}")
 message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
 message(STATUS "OpenCV_LIB_DIR: ${OpenCV_LIB_DIR}")
-message(STATUS "DLL_DEST: ${ASSETS_DIR}/face_recognition.dll")
+message(STATUS "DLL_DEST: ${CMAKE_CURRENT_SOURCE_DIR}/../assets/face_recognition.dll")
 message(STATUS "ONNXRUNTIME_DIR: ${ONNXRUNTIME_DIR}")
 message(STATUS "ONNX Runtime lib: ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib")
 
