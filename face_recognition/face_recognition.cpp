@@ -16,7 +16,7 @@
 #include <chrono>
 #include <iomanip>
 #include <cstdint>
-#include "Include/half.hpp"  // 添加 half.hpp 的包含
+#include "Include/half.hpp"  // 确保这个路径是正确的
 
 // 函数声明
 std::wstring ConvertToWideString(const std::string& multibyteStr);
@@ -89,7 +89,7 @@ OrtEnv* getGlobalOrtEnv() {
 class FaceDetector {
 public:
     FaceDetector(const char* modelPath, ModelType type) 
-        : m_type(type), m_output_node_name("output0") {
+        : m_type(type) {
         try {
             LOG("进入FaceDetector构造函数");
             LOG("模型路径: " + std::string(modelPath));
@@ -145,6 +145,16 @@ public:
 
             LOG("模型输入节点数量: " + std::to_string(num_input_nodes));
             LOG("模型输出节点数量: " + std::to_string(num_output_nodes));
+
+            // 获取输出节点名称
+            OrtAllocator* allocator;
+            g_ort->GetAllocatorWithDefaultOptions(&allocator);
+            g_ort->SessionGetOutputCount(m_session, &num_output_nodes);
+            char* output_name;
+            g_ort->SessionGetOutputName(m_session, 0, allocator, &output_name);
+            m_output_node_name = std::string(output_name);
+            g_ort->AllocatorFree(allocator, output_name);
+            LOG("输出节点名称: " + m_output_node_name);
 
             LOG("FaceDetector初始化成功，使用输出节点名称: " + m_output_node_name);
         } catch (const std::exception& e) {
@@ -212,11 +222,9 @@ private:
         cv::Mat floatMat;
         resized.convertTo(floatMat, CV_32F, 1.0f / 255.0f);
 
-        // 将 float 转换为 float16
-        std::vector<half_float::half> input_tensor(inputWidth * inputHeight * 3);
-        for (int i = 0; i < floatMat.total() * floatMat.channels(); ++i) {
-            input_tensor[i] = half_float::half_cast<half_float::half>(floatMat.ptr<float>()[i]);
-        }
+        // 直接使用 float 类型，不再转换为 float16
+        std::vector<float> input_tensor(inputWidth * inputHeight * 3);
+        std::memcpy(input_tensor.data(), floatMat.data, floatMat.total() * sizeof(float));
 
         LOG("输入张量大小: " + std::to_string(input_tensor.size()));
         LOG("输入张量度: 1x3x" + std::to_string(inputHeight) + "x" + std::to_string(inputWidth));
@@ -236,10 +244,10 @@ private:
         status = g_ort->CreateTensorWithDataAsOrtValue(
             memory_info,
             input_tensor.data(),
-            input_tensor.size() * sizeof(half_float::half),
+            input_tensor.size() * sizeof(float),
             input_shape.data(),
             input_shape.size(),
-            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+            ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,  // 改为 FLOAT
             &input_tensor_ort
         );
         g_ort->ReleaseMemoryInfo(memory_info);
@@ -250,20 +258,39 @@ private:
             throw std::runtime_error(std::string("Failed to create input tensor: ") + error_message);
         }
 
-        const char* input_names[] = {"images"};
-        const char* output_names[] = {m_output_node_name.c_str()};
+        // 获取输入节点名称
+        OrtAllocator* allocator;
+        g_ort->GetAllocatorWithDefaultOptions(&allocator);
+        size_t num_input_nodes;
+        g_ort->SessionGetInputCount(m_session, &num_input_nodes);
+        std::vector<const char*> input_node_names;
+        for (size_t i = 0; i < num_input_nodes; i++) {
+            char* input_name;
+            g_ort->SessionGetInputName(m_session, i, allocator, &input_name);
+            input_node_names.push_back(input_name);
+            LOG("输入节点名称: " + std::string(input_name));
+        }
+
+        // 使用正确的输入节点名称
         OrtValue* output_tensor = nullptr;
-        LOG("开始运行 YOLO 模型，使用输出节点名称: " + m_output_node_name);
+        LOG("开始运行 YOLO 模型，使用输入节点名称: " + std::string(input_node_names[0]));
+        const char* output_name = m_output_node_name.c_str();
         status = g_ort->Run(
             m_session,
             nullptr,
-            input_names,
+            input_node_names.data(),
             &input_tensor_ort,
             1,
-            output_names,
+            &output_name,
             1,
             &output_tensor
         );
+
+        // 释放输入节点名称内存
+        for (const char* name : input_node_names) {
+            g_ort->AllocatorFree(allocator, const_cast<char*>(name));
+        }
+
         g_ort->ReleaseValue(input_tensor_ort);
         if (status != nullptr) {
             const char* error_message = g_ort->GetErrorMessage(status);
@@ -303,69 +330,65 @@ private:
             LOG("  Element " + std::to_string(i) + ": " + std::to_string(output_data[i]));
         }
 
-        float conf_threshold = 0.95f;
-        float iou_threshold = 0.6f;
-        int min_face_size = 30;
-        float max_face_size_ratio = 0.3f; // 最大人脸尺寸不超过图像的30%
-        float min_aspect_ratio = 0.5f;
-        float max_aspect_ratio = 2.0f;
-
         // 更新输出处理逻辑
-        for (int64_t i = 0; i < output_dims[1]; ++i) {
-            const float* row = &output_data[i * 15];  // YOLOv5-face 输出 15 个值
-            float confidence = row[4];
+        int num_classes = 1;  // 假设只有一个类别（人脸）
+        int num_anchors = output_dims[1];
+        int item_size = output_dims[2];
+        float conf_threshold = 0.25f;  // 降低置信度阈值以便于调试
+        float iou_threshold = 0.45f;
+        
+        std::vector<cv::Rect> all_faces;
+        std::vector<float> all_scores;
+        std::vector<std::vector<cv::Point2f>> all_landmarks;
 
-            if (confidence >= conf_threshold) {
+        for (int i = 0; i < num_anchors; ++i) {
+            const float* row = &output_data[i * item_size];
+            float obj_conf = row[4];
+            
+            if (obj_conf > conf_threshold) {
                 float x = row[0];
                 float y = row[1];
                 float w = row[2];
                 float h = row[3];
-
-                // 检查相对坐标和尺寸是否在合理范围内
-                if (x < 0 || x > 1 || y < 0 || y > 1 || w <= 0 || w > 1 || h <= 0 || h > 1) {
-                    LOG("检测到无效的相对坐标或尺寸，跳过");
-                    continue;
-                }
-
+                
+                // 将 YOLO 格式的输出转换为边界框坐标
+                int left = static_cast<int>((x - w/2) * image.cols);
+                int top = static_cast<int>((y - h/2) * image.rows);
                 int width = static_cast<int>(w * image.cols);
                 int height = static_cast<int>(h * image.rows);
-                int left = static_cast<int>((x - 0.5f * w) * image.cols);
-                int top = static_cast<int>((y - 0.5f * h) * image.rows);
-
-                // 更严格的尺寸和比例检查
-                float aspect_ratio = static_cast<float>(width) / height;
-                if (width < min_face_size || height < min_face_size || 
-                    width > image.cols * max_face_size_ratio || height > image.rows * max_face_size_ratio ||
-                    aspect_ratio < min_aspect_ratio || aspect_ratio > max_aspect_ratio) {
-                    LOG("检测到的人脸尺寸或比例不合理，跳过。宽度: " + std::to_string(width) + 
-                        ", 高度: " + std::to_string(height) + ", 置信度: " + std::to_string(confidence));
-                    continue;
-                }
-
-                // 确保检测框在图像范围内
+                
+                // 确保边界框在图像范围内
                 left = std::max(0, std::min(left, image.cols - 1));
                 top = std::max(0, std::min(top, image.rows - 1));
                 width = std::min(width, image.cols - left);
                 height = std::min(height, image.rows - top);
-
-                if (width > 0 && height > 0) {
-                    faces.push_back(cv::Rect(left, top, width, height));
-                    scores.push_back(confidence);
-                    
-                    // 处理关键点
-                    std::vector<cv::Point2f> face_landmarks;
-                    for (int j = 0; j < 5; ++j) {
-                        float lm_x = row[5 + j*2] * image.cols;
-                        float lm_y = row[5 + j*2 + 1] * image.rows;
-                        face_landmarks.emplace_back(lm_x, lm_y);
-                    }
-                    landmarks.push_back(face_landmarks);
-
-                    LOG("检测到人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
-                        "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
-                        "), 置信度: " + std::to_string(confidence));
+                
+                all_faces.emplace_back(left, top, width, height);
+                all_scores.push_back(obj_conf);
+                
+                // 处理关键点
+                std::vector<cv::Point2f> face_landmarks;
+                for (int j = 0; j < 5; ++j) {
+                    float lm_x = row[5 + j*2] * image.cols;
+                    float lm_y = row[5 + j*2 + 1] * image.rows;
+                    face_landmarks.emplace_back(lm_x, lm_y);
                 }
+                all_landmarks.push_back(face_landmarks);
+                
+                LOG("检测到潜在人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
+                    "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
+                    "), 置信度: " + std::to_string(obj_conf));
             }
+        }
+        
+        // 应用非极大值抑制
+        std::vector<int> indices;
+        cv::dnn::NMSBoxes(all_faces, all_scores, conf_threshold, iou_threshold, indices);
+        
+        for (int idx : indices) {
+            faces.push_back(all_faces[idx]);
+            scores.push_back(all_scores[idx]);
+            landmarks.push_back(all_landmarks[idx]);
         }
 
         LOG("detectYOLOV5 检测到 " + std::to_string(faces.size()) + " 个人脸");
@@ -443,7 +466,7 @@ public:
 
             // 假设我们只使用第一个输入
             char* input_name = nullptr;
-            LOG("尝试获取输入节点名称");
+            LOG("尝试获输入节点名称");
             status = g_ort->SessionGetInputName(m_session, 0, allocator, &input_name);
             if (status != nullptr) {
                 const char* error_message = g_ort->GetErrorMessage(status);
