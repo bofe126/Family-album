@@ -35,7 +35,7 @@ typedef CompareFacesDart = double Function(
 
 class FaceRecognitionConfig {
   static const String dllPath = 'face_recognition.dll';
-  static const String yolov5ModelPath = 'assets/yolov5l.onnx';
+  static const String yolov5ModelPath = 'assets/yolov5s-face.onnx';
   static const String arcfaceModelPath = 'assets/arcface_model.onnx';
   static const int maxFaces = 10;
 }

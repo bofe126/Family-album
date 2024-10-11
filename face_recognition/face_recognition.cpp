@@ -175,7 +175,8 @@ public:
 
         std::vector<cv::Rect> faces;
         std::vector<float> scores;
-        detectYOLOV5(image, faces, scores);
+        std::vector<std::vector<cv::Point2f>> landmarks;
+        detectYOLOV5(image, faces, scores, landmarks);
 
         LOG("检测到 " + std::to_string(faces.size()) + " 个潜在人脸");
 
@@ -197,7 +198,7 @@ public:
     }
 
 private:
-    void detectYOLOV5(const cv::Mat& image, std::vector<cv::Rect>& faces, std::vector<float>& scores) {
+    void detectYOLOV5(const cv::Mat& image, std::vector<cv::Rect>& faces, std::vector<float>& scores, std::vector<std::vector<cv::Point2f>>& landmarks) {
         LOG("进入 detectYOLOV5 函数");
         const int inputWidth = 640;
         const int inputHeight = 640;
@@ -309,8 +310,9 @@ private:
         float min_aspect_ratio = 0.5f;
         float max_aspect_ratio = 2.0f;
 
+        // 更新输出处理逻辑
         for (int64_t i = 0; i < output_dims[1]; ++i) {
-            const float* row = &output_data[i * 85];
+            const float* row = &output_data[i * 15];  // YOLOv5-face 输出 15 个值
             float confidence = row[4];
 
             if (confidence >= conf_threshold) {
@@ -349,6 +351,16 @@ private:
                 if (width > 0 && height > 0) {
                     faces.push_back(cv::Rect(left, top, width, height));
                     scores.push_back(confidence);
+                    
+                    // 处理关键点
+                    std::vector<cv::Point2f> face_landmarks;
+                    for (int j = 0; j < 5; ++j) {
+                        float lm_x = row[5 + j*2] * image.cols;
+                        float lm_y = row[5 + j*2 + 1] * image.rows;
+                        face_landmarks.emplace_back(lm_x, lm_y);
+                    }
+                    landmarks.push_back(face_landmarks);
+
                     LOG("检测到人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
                         "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
                         "), 置信度: " + std::to_string(confidence));
