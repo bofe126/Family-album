@@ -171,11 +171,33 @@ public:
     }
 
     std::vector<cv::Rect> detect(const cv::Mat& image) {
-        return detectYOLOV5(image);
+        LOG("开始人脸检测，图像尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
+
+        std::vector<cv::Rect> faces;
+        std::vector<float> scores;
+        detectYOLOV5(image, faces, scores);
+
+        LOG("检测到 " + std::to_string(faces.size()) + " 个潜在人脸");
+
+        // 应用 NMS
+        std::vector<int> indices;
+        cv::dnn::NMSBoxes(faces, scores, 0.95, 0.6, indices);
+
+        std::vector<cv::Rect> finalFaces;
+        for (int idx : indices) {
+            // 添加面积过滤
+            double area = faces[idx].area();
+            if (area > 0.0001 * image.cols * image.rows && area < 0.4 * image.cols * image.rows) {
+                finalFaces.push_back(faces[idx]);
+            }
+        }
+
+        LOG("NMS 后保留了 " + std::to_string(finalFaces.size()) + " 个人脸");
+        return finalFaces;
     }
 
 private:
-    std::vector<cv::Rect> detectYOLOV5(const cv::Mat& image) {
+    void detectYOLOV5(const cv::Mat& image, std::vector<cv::Rect>& faces, std::vector<float>& scores) {
         LOG("进入 detectYOLOV5 函数");
         const int inputWidth = 640;
         const int inputHeight = 640;
@@ -280,78 +302,14 @@ private:
             LOG("  Element " + std::to_string(i) + ": " + std::to_string(output_data[i]));
         }
 
-        std::vector<cv::Rect> faces;
-        try {
-            LOG("开始处理 YOLO 输出");
-            processPredictions(output_tensor, image.cols, image.rows, faces);
-        } catch (const std::exception& e) {
-            LOG("处理 YOLO 输出时发生错误: " + std::string(e.what()));
-            g_ort->ReleaseValue(output_tensor);
-            throw;
-        }
-        g_ort->ReleaseValue(output_tensor);
-        LOG("检测到 " + std::to_string(faces.size()) + " 个人脸");
+        float conf_threshold = 0.95f;
+        float iou_threshold = 0.6f;
+        int min_face_size = 30;
+        float max_face_size_ratio = 0.3f; // 最大人脸尺寸不超过图像的30%
+        float min_aspect_ratio = 0.5f;
+        float max_aspect_ratio = 2.0f;
 
-        return faces;
-    }
-
-    void processPredictions(OrtValue* output_tensor, int orig_width, int orig_height, std::vector<cv::Rect>& faces) {
-        LOG("进入 processPredictions 函数");
-        LOG("原始图像尺寸: " + std::to_string(orig_width) + "x" + std::to_string(orig_height));
-
-        OrtTensorTypeAndShapeInfo* tensor_info;
-        OrtStatus* status = g_ort->GetTensorTypeAndShape(output_tensor, &tensor_info);
-        if (status != nullptr) {
-            const char* error_message = g_ort->GetErrorMessage(status);
-            g_ort->ReleaseStatus(status);
-            throw std::runtime_error(std::string("Failed to get tensor info: ") + error_message);
-        }
-
-        size_t dim_count;
-        g_ort->GetDimensionsCount(tensor_info, &dim_count);
-        std::vector<int64_t> dims(dim_count);
-        g_ort->GetDimensions(tensor_info, dims.data(), dim_count);
-        
-        ONNXTensorElementDataType tensor_type;
-        g_ort->GetTensorElementType(tensor_info, &tensor_type);
-        LOG("输出张量数据类型: " + std::to_string(tensor_type));
-        
-        g_ort->ReleaseTensorTypeAndShapeInfo(tensor_info);
-
-        LOG("输出张量维度: " + std::to_string(dim_count));
-        std::string dims_str = "";
-        for (size_t i = 0; i < dim_count; ++i) {
-            dims_str += std::to_string(dims[i]) + (i < dim_count - 1 ? "x" : "");
-        }
-        LOG("输出张量形状: " + dims_str);
-
-        float* output_data;
-        status = g_ort->GetTensorMutableData(output_tensor, (void**)&output_data);
-        if (status != nullptr) {
-            const char* error_message = g_ort->GetErrorMessage(status);
-            g_ort->ReleaseStatus(status);
-            throw std::runtime_error(std::string("Failed to get tensor data: ") + error_message);
-        }
-
-        // YOLOv5 输出形状应该是 [1, num_boxes, 85]
-        if (dim_count != 3 || dims[2] != 85) {
-            throw std::runtime_error("Unexpected YOLO output shape: " + dims_str);
-        }
-
-        int64_t num_boxes = dims[1];
-        LOG("检测框数量: " + std::to_string(num_boxes));
-
-        float conf_threshold = 0.6f;  // 提高置信度阈值
-        float iou_threshold = 0.5f;   // 稍微提高IOU阈值
-        LOG("置信度阈值: " + std::to_string(conf_threshold) + ", IOU阈值: " + std::to_string(iou_threshold));
-
-        const float max_area_ratio = 0.5f; // 最大允许的人脸区域占图像面积的比例
-        const int image_area = orig_width * orig_height;
-
-        std::vector<cv::Rect> boxes;
-        std::vector<float> confidences;
-
-        for (int64_t i = 0; i < num_boxes; ++i) {
+        for (int64_t i = 0; i < output_dims[1]; ++i) {
             const float* row = &output_data[i * 85];
             float confidence = row[4];
 
@@ -361,62 +319,45 @@ private:
                 float w = row[2];
                 float h = row[3];
 
-                // 计算检测框面积
-                int area = static_cast<int>(w * h * image_area);
-                if (area > image_area * max_area_ratio) {
-                    LOG("检测到的区域过大，可能不是人脸，跳过");
+                // 检查相对坐标和尺寸是否在合理范围内
+                if (x < 0 || x > 1 || y < 0 || y > 1 || w <= 0 || w > 1 || h <= 0 || h > 1) {
+                    LOG("检测到无效的相对坐标或尺寸，跳过");
                     continue;
                 }
 
-                // 将相对坐标转换为绝对坐标
-                int left = static_cast<int>((x - 0.5f * w) * orig_width);
-                int top = static_cast<int>((y - 0.5f * h) * orig_height);
-                int width = static_cast<int>(w * orig_width);
-                int height = static_cast<int>(h * orig_height);
+                int width = static_cast<int>(w * image.cols);
+                int height = static_cast<int>(h * image.rows);
+                int left = static_cast<int>((x - 0.5f * w) * image.cols);
+                int top = static_cast<int>((y - 0.5f * h) * image.rows);
 
-                // 添加边界检查和修正
-                left = std::max(0, std::min(left, orig_width - 1));
-                top = std::max(0, std::min(top, orig_height - 1));
-                width = std::min(width, orig_width - left);
-                height = std::min(height, orig_height - top);
+                // 更严格的尺寸和比例检查
+                float aspect_ratio = static_cast<float>(width) / height;
+                if (width < min_face_size || height < min_face_size || 
+                    width > image.cols * max_face_size_ratio || height > image.rows * max_face_size_ratio ||
+                    aspect_ratio < min_aspect_ratio || aspect_ratio > max_aspect_ratio) {
+                    LOG("检测到的人脸尺寸或比例不合理，跳过。宽度: " + std::to_string(width) + 
+                        ", 高度: " + std::to_string(height) + ", 置信度: " + std::to_string(confidence));
+                    continue;
+                }
+
+                // 确保检测框在图像范围内
+                left = std::max(0, std::min(left, image.cols - 1));
+                top = std::max(0, std::min(top, image.rows - 1));
+                width = std::min(width, image.cols - left);
+                height = std::min(height, image.rows - top);
 
                 if (width > 0 && height > 0) {
-                    boxes.push_back(cv::Rect(left, top, width, height));
-                    confidences.push_back(confidence);
-
-                    LOG("检测到人脸 #" + std::to_string(boxes.size()) + ": 位置(" + 
-                        std::to_string(left) + "," + std::to_string(top) + "), 大小(" + 
-                        std::to_string(width) + "x" + std::to_string(height) + "), 置信度: " + 
-                        std::to_string(confidence));
+                    faces.push_back(cv::Rect(left, top, width, height));
+                    scores.push_back(confidence);
+                    LOG("检测到人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
+                        "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
+                        "), 置信度: " + std::to_string(confidence));
                 }
             }
         }
 
-        LOG("初步检测到 " + std::to_string(boxes.size()) + " 个可能的人脸");
-
-        if (boxes.empty() || confidences.empty()) {
-            LOG("没有检测到任何人脸或置信度为空，跳过NMS");
-            return;
-        }
-
-        std::vector<int> indices;
-        try {
-            cv::dnn::NMSBoxes(boxes, confidences, conf_threshold, iou_threshold, indices);
-        } catch (const cv::Exception& e) {
-            LOG("OpenCV NMS 错误: " + std::string(e.what()));
-            throw;
-        }
-
-        faces.clear();
-        for (int idx : indices) {
-            faces.push_back(boxes[idx]);
-            LOG("NMS 后保留的人脸 #" + std::to_string(faces.size()) + ": 位置(" + 
-                std::to_string(boxes[idx].x) + "," + std::to_string(boxes[idx].y) + "), 大小(" + 
-                std::to_string(boxes[idx].width) + "x" + std::to_string(boxes[idx].height) + "), 置信度: " + 
-                std::to_string(confidences[idx]));
-        }
-
-        LOG("NMS 后保留 " + std::to_string(faces.size()) + " 个人脸");
+        LOG("detectYOLOV5 检测到 " + std::to_string(faces.size()) + " 个人脸");
+        g_ort->ReleaseValue(output_tensor);
     }
 
     OrtSession* m_session;
@@ -683,7 +624,7 @@ cv::Mat loadImage(const std::string& filename) {
 
 DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& detector, ArcFaceExtractor& arcface_extractor, int max_faces) {
     try {
-        LOG("开始处理像: " + image_path);
+        LOG("开始处理图像: " + image_path);
         
         cv::Mat image = loadImage(image_path);
         if (image.empty()) {
@@ -717,17 +658,16 @@ DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& d
             face.height = std::min(face.height, image.rows - face.y);
 
             if (face.width <= 0 || face.height <= 0) {
-                LOG("无效的人脸区域跳过");
+                LOG("无效的人脸区域，跳过");
                 continue;
             }
 
-            cv::Mat face_image = image(face).clone();  // 使用clone()创建一个副本
+            cv::Mat face_image = image(face).clone();
             if (face_image.empty()) {
                 LOG("无法提取人脸图像");
                 continue;
             }
 
-            // 调整人脸图像大小以适应 ArcFace 模型的输入求（通常是 112x112）
             cv::Mat resized_face;
             cv::resize(face_image, resized_face, cv::Size(112, 112));
 
@@ -803,7 +743,7 @@ extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const 
 
             face_data[i] = new uint8_t[result.face_data[i].size()];
             std::copy(result.face_data[i].begin(), result.face_data[i].end(), face_data[i]);
-            face_data_sizes[i] = static_cast<int>(std::min(result.face_data[i].size(), static_cast<size_t>(std::numeric_limits<int>::max())));
+            face_data_sizes[i] = static_cast<int>(result.face_data[i].size());
 
             face_features[i] = new float[result.face_features[i].size()];
             std::copy(result.face_features[i].begin(), result.face_features[i].end(), face_features[i]);
