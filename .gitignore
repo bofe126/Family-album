@@ -45,13 +45,14 @@ app.*.map.json
 *.caffemodel
 *.prototxt
 *.dll
+*.pt
 
 # Build directories
 /face_recognition/build/
 /build/
 
 # Assets directory
-/assets/
+#/assets/
 
 # Third-party libraries
 /third_party/

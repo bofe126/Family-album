@@ -62,7 +62,7 @@ void log(const std::string& file, int line, const std::string& message) {
     // 使用 std::filesystem 提取文件名
     std::string filename = fs::path(file).filename().string();
     
-    // 在日志中添加文件名行号
+    // 在日志中添加文��名行号
     std::cout << "[" << ss.str() << "] [" << filename << ":" << line << "]: " << message << std::endl;
     
     static std::ofstream logfile(logFilePath, std::ios::app);
@@ -84,6 +84,11 @@ OrtEnv* getGlobalOrtEnv() {
         }
     }
     return g_ort_env;
+}
+
+// 添加 sigmoid 函数
+float sigmoid(float x) {
+    return 1.0f / (1.0f + std::exp(-x));
 }
 
 class FaceDetector {
@@ -192,7 +197,7 @@ public:
 
         // 应用 NMS
         std::vector<int> indices;
-        cv::dnn::NMSBoxes(faces, scores, 0.95, 0.6, indices);
+        cv::dnn::NMSBoxes(faces, scores, 0.1f, 0.5f, indices);  // 使用相同的阈值
 
         std::vector<cv::Rect> finalFaces;
         for (int idx : indices) {
@@ -208,21 +213,34 @@ public:
     }
 
 private:
+    // 在 FaceDetector 类中添加 letterbox 函数
+    cv::Mat letterbox(const cv::Mat &src, int target_height, int target_width, 
+                      float *scale, float *offset_x, float *offset_y)
+    {
+        int width = src.cols;
+        int height = src.rows;
+        *scale = std::min((float)target_height / height, (float)target_width / width);
+        int scaled_height = static_cast<int>(height * (*scale));
+        int scaled_width = static_cast<int>(width * (*scale));
+        *offset_x = (target_width - scaled_width) / 2.0f;
+        *offset_y = (target_height - scaled_height) / 2.0f;
+        cv::Mat dst(target_height, target_width, CV_8UC3, cv::Scalar(114, 114, 114));
+        cv::Mat roi(dst, cv::Rect(static_cast<int>(*offset_x), static_cast<int>(*offset_y), scaled_width, scaled_height));
+        cv::resize(src, roi, roi.size(), 0, 0, cv::INTER_LINEAR);
+        return dst;
+    }
+
+    // 修改 detectYOLOV5 函数
     void detectYOLOV5(const cv::Mat& image, std::vector<cv::Rect>& faces, std::vector<float>& scores, std::vector<std::vector<cv::Point2f>>& landmarks) {
         LOG("进入 detectYOLOV5 函数");
         const int inputWidth = 640;
         const int inputHeight = 640;
+        float scale, offset_x, offset_y;
+        cv::Mat letterboxed = letterbox(image, inputHeight, inputWidth, &scale, &offset_x, &offset_y);
         
-        LOG("原始图像尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows) + ", 类型: " + std::to_string(image.type()));
-        cv::Mat resized;
-        cv::resize(image, resized, cv::Size(inputWidth, inputHeight));
-        cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
-        LOG("调整后的图像尺寸: " + std::to_string(resized.cols) + "x" + std::to_string(resized.rows) + ", 类型: " + std::to_string(resized.type()));
-
         cv::Mat floatMat;
-        resized.convertTo(floatMat, CV_32F, 1.0f / 255.0f);
+        letterboxed.convertTo(floatMat, CV_32F, 1.0f / 255.0f);
 
-        // 直接使用 float 类型，不再转换为 float16
         std::vector<float> input_tensor(inputWidth * inputHeight * 3);
         std::memcpy(input_tensor.data(), floatMat.data, floatMat.total() * sizeof(float));
 
@@ -331,53 +349,55 @@ private:
         }
 
         // 更新输出处理逻辑
-        int num_classes = 1;  // 假设只有一个类别（人脸）
-        int num_anchors = output_dims[1];
-        int item_size = output_dims[2];
-        float conf_threshold = 0.25f;  // 降低置信度阈值以便于调试
-        float iou_threshold = 0.45f;
-        
+        const int num_detections = 25200;  // 根据输出形状
+        const int values_per_detection = 16;  // 根据输出形状
+        const float conf_threshold = 0.25f;
+        const float iou_threshold = 0.45f;
+
         std::vector<cv::Rect> all_faces;
         std::vector<float> all_scores;
         std::vector<std::vector<cv::Point2f>> all_landmarks;
 
-        for (int i = 0; i < num_anchors; ++i) {
-            const float* row = &output_data[i * item_size];
-            float obj_conf = row[4];
+        for (int i = 0; i < num_detections; ++i) {
+            const float* detection = &output_data[i * values_per_detection];
+            float conf = detection[4];  // 置信度在第5个位置
             
-            if (obj_conf > conf_threshold) {
-                float x = row[0];
-                float y = row[1];
-                float w = row[2];
-                float h = row[3];
-                
-                // 将 YOLO 格式的输出转换为边界框坐标
+            if (conf > conf_threshold) {
+                float x = detection[0];
+                float y = detection[1];
+                float w = detection[2];
+                float h = detection[3];
+
+                // 转换坐标到原始图像尺寸
                 int left = static_cast<int>((x - w/2) * image.cols);
                 int top = static_cast<int>((y - h/2) * image.rows);
                 int width = static_cast<int>(w * image.cols);
                 int height = static_cast<int>(h * image.rows);
-                
+
                 // 确保边界框在图像范围内
                 left = std::max(0, std::min(left, image.cols - 1));
                 top = std::max(0, std::min(top, image.rows - 1));
                 width = std::min(width, image.cols - left);
                 height = std::min(height, image.rows - top);
                 
-                all_faces.emplace_back(left, top, width, height);
-                all_scores.push_back(obj_conf);
-                
-                // 处理关键点
-                std::vector<cv::Point2f> face_landmarks;
-                for (int j = 0; j < 5; ++j) {
-                    float lm_x = row[5 + j*2] * image.cols;
-                    float lm_y = row[5 + j*2 + 1] * image.rows;
-                    face_landmarks.emplace_back(lm_x, lm_y);
+                // 添加面积过滤
+                if (width * height > 100) {  // 假设最小人脸面积为100像素
+                    all_faces.emplace_back(left, top, width, height);
+                    all_scores.push_back(conf);
+                    
+                    // 处理关键点
+                    std::vector<cv::Point2f> face_landmarks;
+                    for (int k = 0; k < 5; ++k) {
+                        float lx = detection[5 + k*2] * image.cols;
+                        float ly = detection[6 + k*2] * image.rows;
+                        face_landmarks.emplace_back(lx, ly);
+                    }
+                    all_landmarks.push_back(face_landmarks);
+                    
+                    LOG("检测到潜在人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
+                        "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
+                        "), 置信度: " + std::to_string(conf));
                 }
-                all_landmarks.push_back(face_landmarks);
-                
-                LOG("检测到潜在人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
-                    "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
-                    "), 置信度: " + std::to_string(obj_conf));
             }
         }
         
@@ -464,7 +484,7 @@ public:
                 throw std::runtime_error(std::string("Failed to get allocator: ") + error_message);
             }
 
-            // 假设我们只使用第一个输入
+            // 假设我们只使用第一个入
             char* input_name = nullptr;
             LOG("尝试获输入节点名称");
             status = g_ort->SessionGetInputName(m_session, 0, allocator, &input_name);
