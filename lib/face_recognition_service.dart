@@ -33,6 +33,26 @@ typedef CompareFacesC = Float Function(
 typedef CompareFacesDart = double Function(
     Pointer<Float> features1, Pointer<Float> features2, int featureSize);
 
+typedef DetectFacesNative = Int32 Function(
+    Pointer<Utf8> imagePath,
+    Pointer<Int32> faces,
+    Pointer<Pointer<Uint8>> faceData,
+    Pointer<Int32> faceDataSizes,
+    Pointer<Pointer<Float>> faceFeatures,
+    Int32 maxFaces,
+    Float scoreThreshold
+);
+
+typedef DetectFaces = int Function(
+    Pointer<Utf8> imagePath,
+    Pointer<Int32> faces,
+    Pointer<Pointer<Uint8>> faceData,
+    Pointer<Int32> faceDataSizes,
+    Pointer<Pointer<Float>> faceFeatures,
+    int maxFaces,
+    double scoreThreshold
+);
+
 class FaceRecognitionConfig {
   static const String dllPath = 'face_recognition.dll';
   static const String yolov5ModelPath = 'assets/yolov5s-face.onnx';
@@ -176,13 +196,8 @@ class FaceRecognitionService {
     return similarity;
   }
 
-  static Future<List<FaceData>> detectFacesInImage(String imagePath) async {
+  static Future<List<FaceData>> detectFaces(String imagePath, {int maxFaces = 10, double scoreThreshold = 0.6}) async {
     final imagePathNative = imagePath.toNativeUtf8();
-    final yolov5ModelPathNative =
-        FaceRecognitionConfig.yolov5ModelPath.toNativeUtf8();
-    final arcfaceModelPathNative =
-        FaceRecognitionConfig.arcfaceModelPath.toNativeUtf8();
-
     final faces = calloc<Int32>(4 * 10);
     final faceData = calloc<Pointer<Uint8>>(10);
     final faceDataSizes = calloc<Int32>(10);
@@ -191,10 +206,10 @@ class FaceRecognitionService {
     try {
       final numFaces = _detectFaces(
         imagePathNative,
-        yolov5ModelPathNative,
-        arcfaceModelPathNative,
+        FaceRecognitionConfig.yolov5ModelPath.toNativeUtf8(),
+        FaceRecognitionConfig.arcfaceModelPath.toNativeUtf8(),
         faces,
-        10,
+        maxFaces,
         faceData,
         faceDataSizes,
         faceFeatures,
@@ -218,8 +233,6 @@ class FaceRecognitionService {
       return detectedFaces;
     } finally {
       calloc.free(imagePathNative);
-      calloc.free(yolov5ModelPathNative);
-      calloc.free(arcfaceModelPathNative);
       calloc.free(faces);
       for (var i = 0; i < 10; i++) {
         if (faceData[i] != nullptr) calloc.free(faceData[i]);

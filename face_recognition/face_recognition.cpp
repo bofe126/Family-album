@@ -62,7 +62,7 @@ void log(const std::string& file, int line, const std::string& message) {
     // 使用 std::filesystem 提取文件名
     std::string filename = fs::path(file).filename().string();
     
-    // 在日志中添加文��名行号
+    // 在日志中添加文名行号
     std::cout << "[" << ss.str() << "] [" << filename << ":" << line << "]: " << message << std::endl;
     
     static std::ofstream logfile(logFilePath, std::ios::app);
@@ -89,6 +89,69 @@ OrtEnv* getGlobalOrtEnv() {
 // 添加 sigmoid 函数
 float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
+}
+
+// BoxfWithLandmarks 结构体定义
+struct Boxf {
+    float x1;
+    float y1;
+    float x2;
+    float y2;
+    float score;
+    int label;
+    std::string label_text;
+    bool flag;
+};
+
+struct Landmarks {
+    std::vector<cv::Point2f> points;
+    bool flag;
+};
+
+struct BoxfWithLandmarks {
+    Boxf box;
+    Landmarks landmarks;
+    bool flag;
+};
+
+// 计算两个边界框的 IOU
+float iou(const Boxf& a, const Boxf& b) {
+    float area_a = (a.x2 - a.x1) * (a.y2 - a.y1);
+    float area_b = (b.x2 - b.x1) * (b.y2 - b.y1);
+    
+    float xx1 = std::max(a.x1, b.x1);
+    float yy1 = std::max(a.y1, b.y1);
+    float xx2 = std::min(a.x2, b.x2);
+    float yy2 = std::min(a.y2, b.y2);
+    
+    float w = std::max(0.0f, xx2 - xx1);
+    float h = std::max(0.0f, yy2 - yy1);
+    
+    float inter = w * h;
+    return inter / (area_a + area_b - inter);
+}
+
+// NMS 函数实现
+void nms_bboxes_kps(std::vector<BoxfWithLandmarks>& input, std::vector<BoxfWithLandmarks>& output, float iou_threshold) {
+    std::sort(input.begin(), input.end(), [](const BoxfWithLandmarks& a, const BoxfWithLandmarks& b) {
+        return a.box.score > b.box.score;
+    });
+
+    std::vector<bool> is_merged(input.size(), false);
+
+    for (size_t i = 0; i < input.size(); ++i) {
+        if (is_merged[i]) continue;
+
+        output.push_back(input[i]);
+
+        for (size_t j = i + 1; j < input.size(); ++j) {
+            if (is_merged[j]) continue;
+
+            if (iou(input[i].box, input[j].box) > iou_threshold) {
+                is_merged[j] = true;
+            }
+        }
+    }
 }
 
 class FaceDetector {
@@ -185,31 +248,21 @@ public:
         LOG("FaceDetector析构函数完成");
     }
 
-    std::vector<cv::Rect> detect(const cv::Mat& image) {
-        LOG("开始人脸检测，图像尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
-
+    std::vector<cv::Rect> detect(const cv::Mat& image, float score_threshold) {
         std::vector<cv::Rect> faces;
         std::vector<float> scores;
         std::vector<std::vector<cv::Point2f>> landmarks;
-        detectYOLOV5(image, faces, scores, landmarks);
 
-        LOG("检测到 " + std::to_string(faces.size()) + " 个潜在人脸");
-
-        // 应用 NMS
-        std::vector<int> indices;
-        cv::dnn::NMSBoxes(faces, scores, 0.1f, 0.5f, indices);  // 使用相同的阈值
-
-        std::vector<cv::Rect> finalFaces;
-        for (int idx : indices) {
-            // 添加面积过滤
-            double area = faces[idx].area();
-            if (area > 0.0001 * image.cols * image.rows && area < 0.4 * image.cols * image.rows) {
-                finalFaces.push_back(faces[idx]);
-            }
+        if (m_type == ModelType::YOLOV5) {
+            detectYOLOV5(image, faces, scores, landmarks, score_threshold);
+        } else if (m_type == ModelType::RETINAFACE) {
+            // 如果有 RetinaFace 的实现，也需要更新
+            // detectRetinaFace(image, faces, scores, landmarks, score_threshold);
         }
 
-        LOG("NMS 后保留了 " + std::to_string(finalFaces.size()) + " 个人脸");
-        return finalFaces;
+        // 如果需要进行额外的后处理，可以在这里添加
+
+        return faces;
     }
 
 private:
@@ -230,8 +283,10 @@ private:
         return dst;
     }
 
-    // 修改 detectYOLOV5 函数
-    void detectYOLOV5(const cv::Mat& image, std::vector<cv::Rect>& faces, std::vector<float>& scores, std::vector<std::vector<cv::Point2f>>& landmarks) {
+    // 然后在类的私有部分或 .cpp 文件中实现这个函数
+    void detectYOLOV5(const cv::Mat& image, std::vector<cv::Rect>& faces, 
+                      std::vector<float>& scores, std::vector<std::vector<cv::Point2f>>& landmarks,
+                      float score_threshold) {
         LOG("进入 detectYOLOV5 函数");
         const int inputWidth = 640;
         const int inputHeight = 640;
@@ -245,7 +300,7 @@ private:
         std::memcpy(input_tensor.data(), floatMat.data, floatMat.total() * sizeof(float));
 
         LOG("输入张量大小: " + std::to_string(input_tensor.size()));
-        LOG("输入张量度: 1x3x" + std::to_string(inputHeight) + "x" + std::to_string(inputWidth));
+        LOG("输入张量维度: 1x3x" + std::to_string(inputHeight) + "x" + std::to_string(inputWidth));
 
         OrtMemoryInfo* memory_info;
         OrtStatus* status = g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
@@ -349,69 +404,91 @@ private:
         }
 
         // 更新输出处理逻辑
-        const int num_detections = 25200;  // 根据输出形状
-        const int values_per_detection = 16;  // 根据输出形状
-        const float conf_threshold = 0.25f;
-        const float iou_threshold = 0.45f;
+        const int num_anchors = static_cast<int>(output_dims[1]);
+        const int num_classes = 1;
+        const int num_params = num_classes + 5 + 10;
+        // 使用传入的 score_threshold
+        const float conf_threshold = score_threshold;
 
-        std::vector<cv::Rect> all_faces;
-        std::vector<float> all_scores;
-        std::vector<std::vector<cv::Point2f>> all_landmarks;
+        std::vector<BoxfWithLandmarks> bbox_kps_collection;
 
-        for (int i = 0; i < num_detections; ++i) {
-            const float* detection = &output_data[i * values_per_detection];
-            float conf = detection[4];  // 置信度在第5个位置
-            
-            if (conf > conf_threshold) {
-                float x = detection[0];
-                float y = detection[1];
-                float w = detection[2];
-                float h = detection[3];
+        for (int i = 0; i < num_anchors; ++i) {
+            const float* row = &output_data[i * num_params];
+            float obj_conf = row[4];
+            float cls_conf = row[15];
 
-                // 转换坐标到原始图像尺寸
-                int left = static_cast<int>((x - w/2) * image.cols);
-                int top = static_cast<int>((y - h/2) * image.rows);
-                int width = static_cast<int>(w * image.cols);
-                int height = static_cast<int>(h * image.rows);
+            if (obj_conf < conf_threshold || cls_conf < conf_threshold) continue;
 
-                // 确保边界框在图像范围内
-                left = std::max(0, std::min(left, image.cols - 1));
-                top = std::max(0, std::min(top, image.rows - 1));
-                width = std::min(width, image.cols - left);
-                height = std::min(height, image.rows - top);
-                
-                // 添加面积过滤
-                if (width * height > 100) {  // 假设最小人脸面积为100像素
-                    all_faces.emplace_back(left, top, width, height);
-                    all_scores.push_back(conf);
-                    
-                    // 处理关键点
-                    std::vector<cv::Point2f> face_landmarks;
-                    for (int k = 0; k < 5; ++k) {
-                        float lx = detection[5 + k*2] * image.cols;
-                        float ly = detection[6 + k*2] * image.rows;
-                        face_landmarks.emplace_back(lx, ly);
-                    }
-                    all_landmarks.push_back(face_landmarks);
-                    
-                    LOG("检测到潜在人脸: 位置(" + std::to_string(left) + "," + std::to_string(top) + 
-                        "), 大小(" + std::to_string(width) + "x" + std::to_string(height) + 
-                        "), 置信度: " + std::to_string(conf));
-                }
+            float cx = row[0];
+            float cy = row[1];
+            float w = row[2];
+            float h = row[3];
+
+            float x1 = ((cx - w / 2.f) - offset_x) / scale;
+            float y1 = ((cy - h / 2.f) - offset_y) / scale;
+            float x2 = ((cx + w / 2.f) - offset_x) / scale;
+            float y2 = ((cy + h / 2.f) - offset_y) / scale;
+
+            BoxfWithLandmarks box_kps;
+            box_kps.box.x1 = std::max(0.f, x1);
+            box_kps.box.y1 = std::max(0.f, y1);
+            box_kps.box.x2 = std::min(static_cast<float>(image.cols) - 1.f, x2);
+            box_kps.box.y2 = std::min(static_cast<float>(image.rows) - 1.f, y2);
+            box_kps.box.score = cls_conf;
+            box_kps.box.label = 1;
+            box_kps.box.label_text = "face";
+            box_kps.box.flag = true;
+
+            // 处理关键点
+            for (int k = 0; k < 5; ++k) {
+                cv::Point2f kps;
+                kps.x = (row[5 + k*2] - offset_x) / scale;
+                kps.y = (row[5 + k*2 + 1] - offset_y) / scale;
+                kps.x = std::min(std::max(0.f, kps.x), static_cast<float>(image.cols) - 1.f);
+                kps.y = std::min(std::max(0.f, kps.y), static_cast<float>(image.rows) - 1.f);
+                box_kps.landmarks.points.push_back(kps);
             }
-        }
-        
-        // 应用非极大值抑制
-        std::vector<int> indices;
-        cv::dnn::NMSBoxes(all_faces, all_scores, conf_threshold, iou_threshold, indices);
-        
-        for (int idx : indices) {
-            faces.push_back(all_faces[idx]);
-            scores.push_back(all_scores[idx]);
-            landmarks.push_back(all_landmarks[idx]);
+            box_kps.landmarks.flag = true;
+            box_kps.flag = true;
+
+            bbox_kps_collection.push_back(box_kps);
         }
 
-        LOG("detectYOLOV5 检测到 " + std::to_string(faces.size()) + " 个人脸");
+        // 应用 NMS
+        std::vector<BoxfWithLandmarks> nms_result;
+        nms_bboxes_kps(bbox_kps_collection, nms_result, 0.5f);  // 使用 0.5 作为 IOU 阈值
+
+        // 转换结果到输出格式
+        faces.clear();
+        scores.clear();
+        landmarks.clear();
+        for (const auto& box_kps : nms_result) {
+            faces.emplace_back(
+                static_cast<int>(box_kps.box.x1),
+                static_cast<int>(box_kps.box.y1),
+                static_cast<int>(box_kps.box.x2 - box_kps.box.x1),
+                static_cast<int>(box_kps.box.y2 - box_kps.box.y1)
+            );
+            scores.push_back(box_kps.box.score);
+            landmarks.push_back(box_kps.landmarks.points);
+        }
+
+        LOG("NMS 后保留了 " + std::to_string(faces.size()) + " 个人脸");
+
+        // 可视化检测结果
+        cv::Mat result_image = image.clone();
+        for (size_t i = 0; i < faces.size(); ++i) {
+            cv::rectangle(result_image, faces[i], cv::Scalar(0, 255, 0), 2);
+            for (const auto& point : landmarks[i]) {
+                cv::circle(result_image, point, 2, cv::Scalar(0, 0, 255), -1);
+            }
+            cv::putText(result_image, std::to_string(scores[i]), 
+                        cv::Point(faces[i].x, faces[i].y - 10),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.9, cv::Scalar(0, 255, 0), 2);
+        }
+        cv::imwrite("detection_result.jpg", result_image);
+        LOG("检测结果已保存到 detection_result.jpg");
+
         g_ort->ReleaseValue(output_tensor);
     }
 
@@ -677,107 +754,83 @@ cv::Mat loadImage(const std::string& filename) {
     }
 }
 
-DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& detector, ArcFaceExtractor& arcface_extractor, int max_faces) {
-    try {
-        LOG("开始处理图像: " + image_path);
-        
-        cv::Mat image = loadImage(image_path);
-        if (image.empty()) {
-            LOG("图像加载失败: " + image_path);
-            throw std::runtime_error("无法加载图像: " + image_path);
-        }
-        
-        LOG("图像加载成功，尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
-
-        LOG("开始检测人脸");
-        std::vector<cv::Rect> detected_faces;
-        try {
-            detected_faces = detector.detect(image);
-            LOG("检测到 " + std::to_string(detected_faces.size()) + " 个人脸");
-        } catch (const std::exception& e) {
-            LOG("人脸检测失败: " + std::string(e.what()));
-            throw;
-        }
-
-        DetectionResult result;
-        result.num_faces = std::min(static_cast<int>(detected_faces.size()), max_faces);
-
-        for (int i = 0; i < result.num_faces; i++) {
-            cv::Rect face = detected_faces[i];
-            LOG("处理第 " + std::to_string(i+1) + " 个人脸");
-
-            // 确保人脸区域在图像范围内
-            face.x = std::max(0, face.x);
-            face.y = std::max(0, face.y);
-            face.width = std::min(face.width, image.cols - face.x);
-            face.height = std::min(face.height, image.rows - face.y);
-
-            if (face.width <= 0 || face.height <= 0) {
-                LOG("无效的人脸区域，跳过");
-                continue;
-            }
-
-            cv::Mat face_image = image(face).clone();
-            if (face_image.empty()) {
-                LOG("无法提取人脸图像");
-                continue;
-            }
-
-            cv::Mat resized_face;
-            cv::resize(face_image, resized_face, cv::Size(112, 112));
-
-            std::vector<uint8_t> face_data;
-            cv::imencode(".jpg", resized_face, face_data);
-            if (face_data.empty()) {
-                LOG("人脸图像编码失败");
-                continue;
-            }
-
-            std::vector<float> face_features;
-            try {
-                face_features = arcface_extractor.extract(resized_face);
-                LOG("成功提取人脸特征，特征向量大小: " + std::to_string(face_features.size()));
-            } catch (const std::exception& e) {
-                LOG("特征提取失败: " + std::string(e.what()));
-                LOG("跳过当前人脸，继续处理下一个");
-                continue;
-            }
-
-            if (face_features.empty()) {
-                LOG("警告：提取的特征向量为空，跳过当前脸");
-                continue;
-            }
-
-            result.faces.push_back(face);
-            result.face_data.push_back(face_data);
-            result.face_features.push_back(face_features);
-        }
-
-        LOG("人脸检测和特征提取完成，成功处理 " + std::to_string(result.faces.size()) + " 个人脸");
-        return result;
-    } catch (const std::exception& e) {
-        LOG("detect_faces_impl 错误: " + std::string(e.what()));
-        throw;
-    } catch (...) {
-        LOG("detect_faces_impl 未知异常");
-        throw;
+DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& detector, ArcFaceExtractor& arcface_extractor, int max_faces, float score_threshold) {
+    LOG("开始处理图像: " + image_path);
+    cv::Mat image = loadImage(image_path);
+    if (image.empty()) {
+        throw std::runtime_error("Failed to load image: " + image_path);
     }
+    LOG("图像加载成功，尺寸: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
+
+    LOG("开始检测人脸");
+    std::vector<cv::Rect> detected_faces = detector.detect(image, score_threshold);
+    LOG("检测到 " + std::to_string(detected_faces.size()) + " 个潜在人脸");
+
+    DetectionResult result;
+    result.num_faces = std::min(static_cast<int>(detected_faces.size()), max_faces);
+
+    for (int i = 0; i < result.num_faces; i++) {
+        cv::Rect face = detected_faces[i];
+        LOG("处理第 " + std::to_string(i+1) + " 个人脸");
+
+        // 确保人脸区域在图像范围内
+        face.x = std::max(0, face.x);
+        face.y = std::max(0, face.y);
+        face.width = std::min(face.width, image.cols - face.x);
+        face.height = std::min(face.height, image.rows - face.y);
+
+        if (face.width <= 0 || face.height <= 0) {
+            LOG("无效的人脸区域，跳过");
+            continue;
+        }
+
+        cv::Mat face_image = image(face).clone();
+        if (face_image.empty()) {
+            LOG("无法提取人脸图像");
+            continue;
+        }
+
+        cv::Mat resized_face;
+        cv::resize(face_image, resized_face, cv::Size(112, 112));
+
+        std::vector<uint8_t> face_data;
+        cv::imencode(".jpg", resized_face, face_data);
+        if (face_data.empty()) {
+            LOG("人脸图像编码失败");
+            continue;
+        }
+
+        std::vector<float> face_features;
+        try {
+            face_features = arcface_extractor.extract(resized_face);
+            LOG("成功提取人脸特征，特征向量大小: " + std::to_string(face_features.size()));
+        } catch (const std::exception& e) {
+            LOG("特征提取失败: " + std::string(e.what()));
+            LOG("跳过当前人脸，继续处理下一个");
+            continue;
+        }
+
+        if (face_features.empty()) {
+            LOG("警告：提取的特征向量为空，跳过当前脸");
+            continue;
+        }
+
+        result.faces.push_back(face);
+        result.face_data.push_back(face_data);
+        result.face_features.push_back(face_features);
+    }
+
+    LOG("人脸检测和特征提取完成，成功处理 " + std::to_string(result.faces.size()) + " 个人脸");
+    return result;
 }
 
 
-extern "C" __declspec(dllexport) int detect_faces(const char* image_path, const char* yolov5_model_path, const char* arcface_model_path,
-                     int* faces, int max_faces, uint8_t** face_data, int* face_data_sizes, float** face_features) {
-    LOG("进入detect_faces函数");
+extern "C" __declspec(dllexport) int detect_faces(const char* image_path, int* faces, uint8_t** face_data, int* face_data_sizes, float** face_features, int max_faces, float score_threshold) {
     try {
-        LOG("创建FaceDetector");
-        static FaceDetector detector(yolov5_model_path, ModelType::YOLOV5);
-        LOG("FaceDetector创建成功");
+        static FaceDetector detector("assets/yolov5s-face.onnx", ModelType::YOLOV5);
+        static ArcFaceExtractor arcface_extractor("assets/arcface_model.onnx");
 
-        LOG("创建ArcFaceExtractor");
-        static ArcFaceExtractor arcface_extractor(arcface_model_path);
-        LOG("ArcFaceExtractor创建成功");
-
-        DetectionResult result = detect_faces_impl(image_path, detector, arcface_extractor, max_faces);
+        DetectionResult result = detect_faces_impl(image_path, detector, arcface_extractor, max_faces, score_threshold);
 
         // 确保不会超出检测到的人脸数量
         int faces_to_process = std::min(result.num_faces, max_faces);

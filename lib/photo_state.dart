@@ -23,12 +23,14 @@ class PhotoState extends ChangeNotifier {
   UniqueFace? _selectedFace;
   double _similarityThreshold = 0.7; // 降低阈值
   String _searchQuery = '';
+  double _scoreThreshold = 0.6;
 
   List<XFile> get imageFileList => _imageFileList;
   List<UniqueFace> get uniqueFaces => _uniqueFaces;
   UniqueFace? get selectedFace => _selectedFace;
   double get similarityThreshold => _similarityThreshold;
   String get searchQuery => _searchQuery;
+  double get scoreThreshold => _scoreThreshold;
 
   List<XFile> get filteredImages {
     print("正在过滤图片。总数: ${_imageFileList.length}, 选中的人脸: ${_selectedFace?.label ?? '无'}, 搜索查询: $_searchQuery");
@@ -69,7 +71,10 @@ class PhotoState extends ChangeNotifier {
 
   Future<void> _detectFaces(List<XFile> images) async {
     for (var image in images) {
-      List<FaceData> faces = await FaceRecognitionService.recognizeFaces([image.path]);
+      List<FaceData> faces = await FaceRecognitionService.detectFaces(
+        image.path,
+        scoreThreshold: _scoreThreshold
+      );
       _detectedFaces[image.path] = faces;
       for (var face in faces) {
         bool added = false;
@@ -158,5 +163,10 @@ class PhotoState extends ChangeNotifier {
     // 3. 提取人脸特征
     // 4. 更新照片和人脸数据
     // 5. 通知监听器
+  }
+
+  void setScoreThreshold(double value) {
+    _scoreThreshold = value;
+    notifyListeners();
   }
 }

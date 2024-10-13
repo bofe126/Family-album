@@ -201,16 +201,16 @@ class ThresholdSlider extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
             children: [
-              Text('相似度阈值:'),
+              Text('检测阈值:'),
               Expanded(
                 child: Slider(
-                  value: photoState.similarityThreshold,
-                  min: 0.5,
-                  max: 1.0,
-                  divisions: 50,
-                  label: photoState.similarityThreshold.toStringAsFixed(2),
+                  value: photoState.scoreThreshold,
+                  min: 0.1,
+                  max: 0.9,
+                  divisions: 8,
+                  label: photoState.scoreThreshold.toStringAsFixed(1),
                   onChanged: (double value) {
-                    photoState.setSimilarityThreshold(value);
+                    photoState.setScoreThreshold(value);
                   },
                 ),
               ),
