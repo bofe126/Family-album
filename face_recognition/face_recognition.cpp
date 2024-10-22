@@ -90,7 +90,6 @@ OrtEnv* getGlobalOrtEnv() {
 float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
-
 // BoxfWithLandmarks 结构体定义
 struct Boxf {
     float x1;
@@ -132,25 +131,37 @@ float iou(const Boxf& a, const Boxf& b) {
 }
 
 // NMS 函数实现
-void nms_bboxes_kps(std::vector<BoxfWithLandmarks>& input, std::vector<BoxfWithLandmarks>& output, float iou_threshold) {
+void nms_bboxes_kps(std::vector<BoxfWithLandmarks>& input,
+                    std::vector<BoxfWithLandmarks>& output,
+                    float iou_threshold, unsigned int topk)
+{
     std::sort(input.begin(), input.end(), [](const BoxfWithLandmarks& a, const BoxfWithLandmarks& b) {
         return a.box.score > b.box.score;
     });
 
     std::vector<bool> is_merged(input.size(), false);
 
-    for (size_t i = 0; i < input.size(); ++i) {
+    unsigned int count = 0;
+    for (unsigned int i = 0; i < input.size(); ++i)
+    {
         if (is_merged[i]) continue;
 
         output.push_back(input[i]);
 
-        for (size_t j = i + 1; j < input.size(); ++j) {
+        for (size_t j = i + 1; j < input.size(); ++j)
+        {
             if (is_merged[j]) continue;
 
-            if (iou(input[i].box, input[j].box) > iou_threshold) {
+            if (iou(input[i].box, input[j].box) > iou_threshold)
+            {
                 is_merged[j] = true;
             }
         }
+
+        // 添加数量限制
+        count += 1;
+        if (count >= topk || count >= 1000)  // 设置一个合理的上限，如1000
+            break;
     }
 }
 
@@ -456,9 +467,9 @@ private:
 
         // 应用 NMS
         std::vector<BoxfWithLandmarks> nms_result;
-        nms_bboxes_kps(bbox_kps_collection, nms_result, 0.5f);  // 使用 0.5 作为 IOU 阈值
+        nms_bboxes_kps(bbox_kps_collection, nms_result, 0.5f, 1000);  // 使用 0.5 作为 IOU 阈值
 
-        // 转换结果到输出格式
+        // 转换结果���输出格式
         faces.clear();
         scores.clear();
         landmarks.clear();
@@ -827,27 +838,47 @@ DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& d
 
 extern "C" __declspec(dllexport) int detect_faces(const char* image_path, int* faces, uint8_t** face_data, int* face_data_sizes, float** face_features, int max_faces, float score_threshold) {
     try {
+        LOG("开始执行 detect_faces 函数");
+        LOG("输入参数: image_path = " + std::string(image_path) + ", max_faces = " + std::to_string(max_faces) + ", score_threshold = " + std::to_string(score_threshold));
+
+        if (score_threshold != score_threshold) {  // 检查 NaN
+            LOG("错误：score_threshold 是 NaN");
+            return -1;
+        }
+        if (std::isinf(score_threshold)) {  // 检查无穷大
+            LOG("错误：score_threshold 是无穷大");
+            return -1;
+        }
+        if (score_threshold < 0 || score_threshold > 1) {  // 检查合理范围
+            LOG("警告：score_threshold 超出预期范围 [0, 1]，值为 " + std::to_string(score_threshold));
+        }
+
         static FaceDetector detector("assets/yolov5s-face.onnx", ModelType::YOLOV5);
         static ArcFaceExtractor arcface_extractor("assets/arcface_model.onnx");
 
         DetectionResult result = detect_faces_impl(image_path, detector, arcface_extractor, max_faces, score_threshold);
 
-        // 确保不会超出检测到的人脸数量
-        int faces_to_process = std::min(result.num_faces, max_faces);
-        faces_to_process = std::min(faces_to_process, static_cast<int>(result.faces.size()));
+        // 使用 size_t 而不是 int 来避免整数溢出
+        size_t faces_to_process = std::min(static_cast<size_t>(result.num_faces), static_cast<size_t>(max_faces));
+        faces_to_process = std::min(faces_to_process, result.faces.size());
 
         LOG("处理 " + std::to_string(faces_to_process) + " 个人脸");
 
-        for (int i = 0; i < faces_to_process; i++) {
+        for (size_t i = 0; i < faces_to_process; i++) {
             if (i >= result.faces.size() || i >= result.face_data.size() || i >= result.face_features.size()) {
                 LOG("警告：结果数组索引越界，停止处理");
                 break;
             }
 
-            faces[i * 4] = result.faces[i].x;
-            faces[i * 4 + 1] = result.faces[i].y;
-            faces[i * 4 + 2] = result.faces[i].width;
-            faces[i * 4 + 3] = result.faces[i].height;
+            if (i * 4 + 3 < max_faces * 4) {
+                faces[i * 4] = result.faces[i].x;
+                faces[i * 4 + 1] = result.faces[i].y;
+                faces[i * 4 + 2] = result.faces[i].width;
+                faces[i * 4 + 3] = result.faces[i].height;
+            } else {
+                LOG("警告：faces数组索引越界，跳过当前人脸");
+                continue;
+            }
 
             face_data[i] = new uint8_t[result.face_data[i].size()];
             std::copy(result.face_data[i].begin(), result.face_data[i].end(), face_data[i]);
@@ -859,13 +890,13 @@ extern "C" __declspec(dllexport) int detect_faces(const char* image_path, int* f
             LOG("成功处理第 " + std::to_string(i+1) + " 个人脸");
         }
 
-        LOG("detect_faces函数执行完成，处理了 " + std::to_string(faces_to_process) + " 个人脸");
-        return faces_to_process;
+        LOG("detect_faces 函数执行完成，处理了 " + std::to_string(faces_to_process) + " ��人脸");
+        return static_cast<int>(faces_to_process);  // 安全地转换回 int
     } catch (const std::exception& e) {
-        LOG("detect_faces中的错误: " + std::string(e.what()));
+        LOG("detect_faces 中的错误: " + std::string(e.what()));
         return -1;
     } catch (...) {
-        LOG("detect_faces中的未知错误");
+        LOG("detect_faces 中的未知错误");
         return -1;
     }
 }
@@ -921,3 +952,10 @@ std::string ConvertToUTF8(const std::wstring& wstr) {
     WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
     return strTo;
 }
+
+
+
+
+
+
+
