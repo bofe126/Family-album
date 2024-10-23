@@ -43,6 +43,8 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")
+  target_include_directories(${TARGET} PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(${TARGET} PRIVATE ${OpenCV_LIBS})
 endfunction()
 
 # Flutter library and tool build rules.
@@ -59,6 +61,11 @@ link_directories("${ONNXRUNTIME_DIR}/lib")
 
 # 在 add_subdirectory("runner") 之前添加这行
 set(EXTRA_LIBS ${EXTRA_LIBS} "${ONNXRUNTIME_DIR}/lib/onnxruntime.lib")
+
+# 设置 OpenCV 路径（请根据您的实际安装路径进行调整）
+set(OpenCV_DIR "C:/Program Files/opencv/build")
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
@@ -95,7 +102,6 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
-
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
@@ -121,3 +127,4 @@ install(FILES
     "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll"
   DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+

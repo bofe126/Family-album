@@ -469,7 +469,7 @@ private:
         std::vector<BoxfWithLandmarks> nms_result;
         nms_bboxes_kps(bbox_kps_collection, nms_result, 0.5f, 1000);  // 使用 0.5 作为 IOU 阈值
 
-        // 转换结果���输出格式
+        // 转换结果输出格式
         faces.clear();
         scores.clear();
         landmarks.clear();
@@ -654,9 +654,16 @@ public:
         
         LOG("处理后的图像尺寸: " + std::to_string(processed_face.cols) + "x" + std::to_string(processed_face.rows) + ", 类型: " + std::to_string(processed_face.type()));
 
-        std::vector<float> input_tensor(processed_face.total() * processed_face.channels());
-        cv::Mat flat = processed_face.reshape(1, processed_face.total() * processed_face.channels());
-        std::memcpy(input_tensor.data(), flat.data, flat.total() * sizeof(float));
+        // 修复 size_t 到 int 的转换警告
+        size_t tensor_size = processed_face.total() * processed_face.channels();
+        if (tensor_size > static_cast<size_t>(INT_MAX)) {
+            LOG("错误：张量大小超过 INT_MAX 限制");
+            throw std::runtime_error("Tensor size exceeds INT_MAX");
+        }
+        
+        std::vector<float> input_tensor(tensor_size);
+        cv::Mat flat = processed_face.reshape(1, static_cast<int>(tensor_size));
+        std::memcpy(input_tensor.data(), flat.data, tensor_size * sizeof(float));
 
         OrtMemoryInfo* memory_info;
         OrtStatus* status = g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info);
@@ -722,8 +729,23 @@ public:
 
         LOG("特征提取完成，特征向量大小: " + std::to_string(output_tensor_size));
 
-        // 修改这一行，使用 static_cast 进行安全的类型转换
-        std::vector<float> output_vector(output_data, output_data + static_cast<ptrdiff_t>(output_tensor_size));
+        // 在处理输出数据时添加安全检查
+        std::vector<float> output_vector;
+        try {
+            if (output_tensor_size > static_cast<size_t>(INT_MAX)) {
+                LOG("错误：输出张量大小超过 INT_MAX");
+                throw std::runtime_error("Output tensor size too large");
+            }
+            int safe_size = static_cast<int>(output_tensor_size);
+            
+            // 使用安全转换后的大小
+            output_vector.resize(safe_size);
+            std::copy_n(output_data, safe_size, output_vector.begin());
+        } catch (const std::exception& e) {
+            LOG("错误：处理输出数据时发生异常: " + std::string(e.what()));
+            throw;
+        }
+
         g_ort->ReleaseValue(output_tensor);
 
         return output_vector;
@@ -778,7 +800,13 @@ DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& d
     LOG("检测到 " + std::to_string(detected_faces.size()) + " 个潜在人脸");
 
     DetectionResult result;
-    result.num_faces = std::min(static_cast<int>(detected_faces.size()), max_faces);
+    // 添加安全的类型转换
+    size_t faces_count = std::min(
+        static_cast<size_t>(std::max(0, max_faces)),  // 确保 max_faces 非负
+        static_cast<size_t>(detected_faces.size())
+    );
+    
+    result.num_faces = static_cast<int>(faces_count); // 安全转换回 int
 
     for (int i = 0; i < result.num_faces; i++) {
         cv::Rect face = detected_faces[i];
@@ -838,32 +866,35 @@ DetectionResult detect_faces_impl(const std::string& image_path, FaceDetector& d
 
 extern "C" __declspec(dllexport) int detect_faces(const char* image_path, int* faces, uint8_t** face_data, int* face_data_sizes, float** face_features, int max_faces, float score_threshold) {
     try {
-        LOG("开始执行 detect_faces 函数");
-        LOG("输入参数: image_path = " + std::string(image_path) + ", max_faces = " + std::to_string(max_faces) + ", score_threshold = " + std::to_string(score_threshold));
+        // 参数验证
+        if (max_faces <= 0 || max_faces > 100) {
+            LOG("警告：max_faces 无效 (" + std::to_string(max_faces) + ")，使用默认值 10");
+            max_faces = 10;
+        }
+        // 验证并修正 score_threshold
+        if (std::isnan(score_threshold) || std::isinf(score_threshold) || 
+            score_threshold < 0.0f || score_threshold > 1.0f) {
+            LOG("警告：score_threshold 无效 (" + std::to_string(score_threshold) + ")，使用默认值 0.6");
+            score_threshold = 0.6f;
+        }
 
-        if (score_threshold != score_threshold) {  // 检查 NaN
-            LOG("错误：score_threshold 是 NaN");
-            return -1;
-        }
-        if (std::isinf(score_threshold)) {  // 检查无穷大
-            LOG("错误：score_threshold 是无穷大");
-            return -1;
-        }
-        if (score_threshold < 0 || score_threshold > 1) {  // 检查合理范围
-            LOG("警告：score_threshold 超出预期范围 [0, 1]，值为 " + std::to_string(score_threshold));
-        }
+        LOG("参数验证通过：max_faces=" + std::to_string(max_faces) + 
+            ", score_threshold=" + std::to_string(score_threshold));
 
         static FaceDetector detector("assets/yolov5s-face.onnx", ModelType::YOLOV5);
         static ArcFaceExtractor arcface_extractor("assets/arcface_model.onnx");
 
         DetectionResult result = detect_faces_impl(image_path, detector, arcface_extractor, max_faces, score_threshold);
 
-        // 使用 size_t 而不是 int 来避免整数溢出
-        size_t faces_to_process = std::min(static_cast<size_t>(result.num_faces), static_cast<size_t>(max_faces));
-        faces_to_process = std::min(faces_to_process, result.faces.size());
+        // 使用安全的类型转换和边界检查
+        size_t faces_to_process = std::min(
+            static_cast<size_t>(result.num_faces),
+            static_cast<size_t>(max_faces)
+        );
 
         LOG("处理 " + std::to_string(faces_to_process) + " 个人脸");
 
+        // 处理检测结果
         for (size_t i = 0; i < faces_to_process; i++) {
             if (i >= result.faces.size() || i >= result.face_data.size() || i >= result.face_features.size()) {
                 LOG("警告：结果数组索引越界，停止处理");
@@ -890,7 +921,8 @@ extern "C" __declspec(dllexport) int detect_faces(const char* image_path, int* f
             LOG("成功处理第 " + std::to_string(i+1) + " 个人脸");
         }
 
-        LOG("detect_faces 函数执行完成，处理了 " + std::to_string(faces_to_process) + " ��人脸");
+        LOG("detect_faces 函数执行完成，处理了 " + std::to_string(faces_to_process) + " 个人脸");            // ... 处理代码 ...
+
         return static_cast<int>(faces_to_process);  // 安全地转换回 int
     } catch (const std::exception& e) {
         LOG("detect_faces 中的错误: " + std::string(e.what()));
@@ -946,7 +978,7 @@ void setLocale() {
 }
 
 std::string ConvertToUTF8(const std::wstring& wstr) {
-    if (wstr.empty()) return std::string();
+    if (wstr.empty()) return std::string();        
     int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), NULL, 0, NULL, NULL);
     std::string strTo(size_needed, 0);
     WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);

@@ -7,32 +7,6 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:async';
 import 'logger.dart'; // 导入您的 logger.dart 文件
 
-typedef DetectFacesC = Int32 Function(
-    Pointer<Utf8> imagePath,
-    Pointer<Utf8> yolov5ModelPath,
-    Pointer<Utf8> arcfaceModelPath,
-    Pointer<Int32> faces,
-    Int32 maxFaces,
-    Pointer<Pointer<Uint8>> faceData,
-    Pointer<Int32> faceDataSizes,
-    Pointer<Pointer<Float>> faceFeatures);
-
-typedef DetectFacesDart = int Function(
-    Pointer<Utf8> imagePath,
-    Pointer<Utf8> yolov5ModelPath,
-    Pointer<Utf8> arcfaceModelPath,
-    Pointer<Int32> faces,
-    int maxFaces,
-    Pointer<Pointer<Uint8>> faceData,
-    Pointer<Int32> faceDataSizes,
-    Pointer<Pointer<Float>> faceFeatures);
-
-typedef CompareFacesC = Float Function(
-    Pointer<Float> features1, Pointer<Float> features2, Int32 featureSize);
-
-typedef CompareFacesDart = double Function(
-    Pointer<Float> features1, Pointer<Float> features2, int featureSize);
-
 typedef DetectFacesNative = Int32 Function(
     Pointer<Utf8> imagePath,
     Pointer<Int32> faces,
@@ -53,6 +27,18 @@ typedef DetectFaces = int Function(
     double scoreThreshold
 );
 
+typedef CompareFacesNative = Float Function(
+    Pointer<Float> features1,
+    Pointer<Float> features2,
+    Int32 featureSize
+);
+
+typedef CompareFaces = double Function(
+    Pointer<Float> features1,
+    Pointer<Float> features2,
+    int featureSize
+);
+
 class FaceRecognitionConfig {
   static const String dllPath = 'face_recognition.dll';
   static const String yolov5ModelPath = 'assets/yolov5s-face.onnx';
@@ -68,10 +54,10 @@ class FaceRecognitionException implements Exception {
 }
 
 class FaceRecognitionService {
-  static final _logger = logger;  // 这里使用从 logger.dart 导入的全局 logger 实例
+  static final _logger = logger; // 这里使用从 logger.dart 导入的全局 logger 实例
   static late DynamicLibrary _lib;
-  static late DetectFacesDart _detectFaces;
-  static late CompareFacesDart _compareFaces;
+  static late DetectFaces _detectFaces;
+  static late CompareFaces _compareFaces;
   static bool _isInitialized = false;
 
   static bool get isInitialized => _isInitialized;
@@ -83,10 +69,10 @@ class FaceRecognitionService {
 
       _lib = DynamicLibrary.open(FaceRecognitionConfig.dllPath);
       _detectFaces = _lib
-          .lookup<NativeFunction<DetectFacesC>>('detect_faces')
+          .lookup<NativeFunction<DetectFacesNative>>('detect_faces')
           .asFunction();
       _compareFaces = _lib
-          .lookup<NativeFunction<CompareFacesC>>('compare_faces')
+          .lookup<NativeFunction<CompareFacesNative>>('compare_faces')
           .asFunction();
 
       _isInitialized = true;
@@ -113,39 +99,22 @@ class FaceRecognitionService {
       final normalizedPath = _normalizePath(imagePath);
       _logger.i('Face detection: start=$normalizedPath');
 
-      if (!await File(normalizedPath).exists()) {
-        throw FaceRecognitionException("图像文件不存在: $normalizedPath");
-      }
-
-      if (!await File(FaceRecognitionConfig.yolov5ModelPath).exists()) {
-        throw FaceRecognitionException(
-            "YOLOV5 模型文件不存在: ${FaceRecognitionConfig.yolov5ModelPath}");
-      }
-
-      if (!await File(FaceRecognitionConfig.arcfaceModelPath).exists()) {
-        throw FaceRecognitionException(
-            "ArcFace 模型文件不存在: ${FaceRecognitionConfig.arcfaceModelPath}");
-      }
-
       final List<FaceData> detectedFaces = [];
 
       using((arena) {
         final facesPtr = arena<Int32>(FaceRecognitionConfig.maxFaces * 4);
-        final faceDataPtr =
-            arena<Pointer<Uint8>>(FaceRecognitionConfig.maxFaces);
+        final faceDataPtr = arena<Pointer<Uint8>>(FaceRecognitionConfig.maxFaces);
         final faceDataSizesPtr = arena<Int32>(FaceRecognitionConfig.maxFaces);
-        final faceFeaturesPtr =
-            arena<Pointer<Float>>(FaceRecognitionConfig.maxFaces);
+        final faceFeaturesPtr = arena<Pointer<Float>>(FaceRecognitionConfig.maxFaces);
 
         final result = _detectFaces(
           normalizedPath.toNativeUtf8(allocator: arena),
-          FaceRecognitionConfig.yolov5ModelPath.toNativeUtf8(allocator: arena),
-          FaceRecognitionConfig.arcfaceModelPath.toNativeUtf8(allocator: arena),
           facesPtr,
-          FaceRecognitionConfig.maxFaces,
           faceDataPtr,
           faceDataSizesPtr,
           faceFeaturesPtr,
+          FaceRecognitionConfig.maxFaces,
+          0.6  // 默认阈值
         );
 
         _logger.i('Face detection: result=$result');
@@ -196,52 +165,55 @@ class FaceRecognitionService {
     return similarity;
   }
 
-  static Future<List<FaceData>> detectFaces(String imagePath, {int maxFaces = 10, double scoreThreshold = 0.6}) async {
-    final imagePathNative = imagePath.toNativeUtf8();
-    final faces = calloc<Int32>(4 * 10);
-    final faceData = calloc<Pointer<Uint8>>(10);
-    final faceDataSizes = calloc<Int32>(10);
-    final faceFeatures = calloc<Pointer<Float>>(10);
+  static Future<List<FaceData>> detectFaces(String imagePath,
+      {int maxFaces = 10, double scoreThreshold = 0.6}) async {
+    // 添加参数验证
+    if (maxFaces <= 0 || maxFaces > 100) {
+        _logger.w('Invalid maxFaces ($maxFaces), using default value 10');
+        maxFaces = 10;
+    }
 
-    try {
+    List<FaceData> detectedFaces = [];
+
+    await using((Arena arena) {
+      final imagePathNative = imagePath.toNativeUtf8(allocator: arena);
+      final faces = arena<Int32>(4 * maxFaces);  // 确保分配足够的空间
+      final faceData = arena<Pointer<Uint8>>(maxFaces);
+      final faceDataSizes = arena<Int32>(maxFaces);
+      final faceFeatures = arena<Pointer<Float>>(maxFaces);
+
+      _logger.i('调用detect_faces: path=$imagePath, maxFaces=$maxFaces, threshold=$scoreThreshold');
+      
       final numFaces = _detectFaces(
         imagePathNative,
-        FaceRecognitionConfig.yolov5ModelPath.toNativeUtf8(),
-        FaceRecognitionConfig.arcfaceModelPath.toNativeUtf8(),
         faces,
-        maxFaces,
         faceData,
         faceDataSizes,
         faceFeatures,
+        maxFaces,
+        scoreThreshold
       );
 
       if (numFaces < 0) {
+        _logger.e('人脸检测失败: $numFaces');
         throw Exception('Face detection failed');
       }
 
-      List<FaceData> detectedFaces = [];
-      for (int i = 0; i < numFaces; i++) {
-        final faceImageData = faceData[i].asTypedList(faceDataSizes[i]);
-        final faceFeatureData = faceFeatures[i].asTypedList(128);
+      // 添加边界检查
+      for (int i = 0; i < numFaces && i < maxFaces; i++) {
+        if (faceData[i] != nullptr && faceFeatures[i] != nullptr) {
+          final faceImageData = faceData[i].asTypedList(faceDataSizes[i]);
+          final faceFeatureData = faceFeatures[i].asTypedList(128);
 
-        detectedFaces.add(FaceData(
-          faceImage: Uint8List.fromList(faceImageData),
-          features: Float32List.fromList(faceFeatureData),
-        ));
+          detectedFaces.add(FaceData(
+            faceImage: Uint8List.fromList(faceImageData),
+            features: Float32List.fromList(faceFeatureData),
+          ));
+        }
       }
+    });
 
-      return detectedFaces;
-    } finally {
-      calloc.free(imagePathNative);
-      calloc.free(faces);
-      for (var i = 0; i < 10; i++) {
-        if (faceData[i] != nullptr) calloc.free(faceData[i]);
-        if (faceFeatures[i] != nullptr) calloc.free(faceFeatures[i]);
-      }
-      calloc.free(faceData);
-      calloc.free(faceDataSizes);
-      calloc.free(faceFeatures);
-    }
+    return detectedFaces;
   }
 
   static Future<void> cleanupTempFiles() async {

@@ -3,13 +3,13 @@ import 'face_recognition_service.dart';
 import 'dart:typed_data';
 import 'package:provider/provider.dart';
 import 'photo_state.dart';
+import 'logger.dart';  // 添加 logger 导入
 
 class FaceRecognition extends StatefulWidget {
   final List<String> imagePaths;
   const FaceRecognition({Key? key, required this.imagePaths}) : super(key: key);
 
   @override
-  // ignore: library_private_types_in_public_api
   _FaceRecognitionState createState() => _FaceRecognitionState();
 }
 
@@ -17,11 +17,11 @@ class _FaceRecognitionState extends State<FaceRecognition> {
   bool _isRecognizing = false;
   List<Uint8List> _detectedFaces = [];
   bool _showAllDetections = false;
+  final _logger = logger;  // 使用导入的 logger
 
   @override
   void initState() {
     super.initState();
-    // 使用 WidgetsBinding.instance.addPostFrameCallback 来确保在 widget 树构建完成后执行
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _recognizeFaces();
     });
@@ -47,9 +47,9 @@ class _FaceRecognitionState extends State<FaceRecognition> {
         _detectedFaces = [];
       });
 
-      print("Starting face recognition for ${widget.imagePaths.length} images");
+      _logger.i("Starting face recognition for ${widget.imagePaths.length} images");
       for (var path in widget.imagePaths) {
-        print("Processing image: $path");
+        _logger.i("Processing image: $path");
       }
 
       List<FaceData> faceDataList =
@@ -62,13 +62,13 @@ class _FaceRecognitionState extends State<FaceRecognition> {
 
       if (_detectedFaces.length >= 100) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('检测到100张或更多人脸。可能有些人脸未被处理。')),
+          const SnackBar(content: Text('检测到100张或更多人脸。可能有些人脸未被处理。')),
         );
       }
 
-      logger.i("人脸识别完成，共检测到 ${_detectedFaces.length} 个人脸");
+      _logger.i("人脸识别完成，共检测到 ${_detectedFaces.length} 个人脸");
     } catch (e) {
-      logger.e("_recognizeFaces 出错: $e");
+      _logger.e("_recognizeFaces 出错: $e");
       setState(() {
         _isRecognizing = false;
       });
@@ -79,7 +79,7 @@ class _FaceRecognitionState extends State<FaceRecognition> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('人脸识别'),
+        title: const Text('人脸识别'),
       ),
       body: Column(
         children: [
@@ -92,13 +92,13 @@ class _FaceRecognitionState extends State<FaceRecognition> {
                     onPressed: _isRecognizing ? null : _recognizeFaces,
                     child: Text(_isRecognizing ? '正在识别...' : '重新识别'),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   Text('图片数量: ${widget.imagePaths.length}'),
                   if (_detectedFaces.isNotEmpty)
                     Text('检测到的人脸数量: ${_detectedFaces.length}'),
-                  if (_isRecognizing) CircularProgressIndicator(),
+                  if (_isRecognizing) const CircularProgressIndicator(),
                   CheckboxListTile(
-                    title: Text("显示所有检测结果"),
+                    title: const Text("显示所有检测结果"),
                     value: _showAllDetections,
                     onChanged: (newValue) {
                       setState(() {
@@ -110,7 +110,7 @@ class _FaceRecognitionState extends State<FaceRecognition> {
               ),
             ),
           ),
-          Container(
+          SizedBox(
             height: 100,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,

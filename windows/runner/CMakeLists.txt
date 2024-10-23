@@ -51,3 +51,6 @@ add_dependencies(${BINARY_NAME} flutter_assemble)
 #         "$<TARGET_FILE_DIR:${BINARY_NAME}>/"
 #     COMMENT "Copying face_recognition.dll and onnxruntime.dll to Flutter application build directory"
 # )
+
+# 在适当的位置添加以下内容
+target_link_libraries(${BINARY_NAME} PRIVATE ${OpenCV_LIBS})
