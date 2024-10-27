@@ -133,8 +133,8 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
         // 收集所有anchor的置信度
         for (int i = 0; i < num_anchors; ++i) {
             const float* row = output_data + i * output_dim;
-            float obj_conf = sigmoid(row[4]);
-            float cls_conf = sigmoid(row[5]);
+            float obj_conf = row[4];  // 移除 sigmoid
+            float cls_conf = row[5];  // 移除 sigmoid
             float confidence = obj_conf * cls_conf;
             confidence_indices.push_back({confidence, i});
         }
@@ -159,8 +159,8 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
             ss << std::fixed << std::setprecision(4)
                << "Anchor " << idx 
                << ": confidence=" << confidence
-               << ", obj_conf=" << sigmoid(row[4])
-               << ", cls_conf=" << sigmoid(row[5])
+               << ", obj_conf=" << row[4]  // 直接使用原始值
+               << ", cls_conf=" << row[5]  // 直接使用原始值
                << ", box=(" << cx << "," << cy << "," << w << "," << h << ")";
             LOG(ss.str());
         }
@@ -200,8 +200,23 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
             detections.push_back(detection);
         }
 
-        // 7. 应用NMS
+        // 修改 NMS 处理部分
         std::vector<BoxfWithLandmarks> nms_results;
+        nms_bboxes_kps(detections, nms_results, m_config.iou_threshold, 50);  // 限制最大检测数量为50
+
+        // 按置信度排序并只保留前N个
+        if (nms_results.size() > 10) {  // 设置一个合理的上限
+            std::sort(nms_results.begin(), nms_results.end(),
+                     [](const BoxfWithLandmarks& a, const BoxfWithLandmarks& b) {
+                         return a.box.score > b.box.score;
+                     });
+            nms_results.resize(10);  // 只保留置信度最高的10个
+        }
+
+        LOG("检测到 " + std::to_string(nms_results.size()) + " 个人脸，置信度阈值: " + 
+            std::to_string(score_threshold) + ", IOU阈值: " + std::to_string(m_config.iou_threshold));
+
+        // 7. 应用NMS
         nms_bboxes_kps(detections, nms_results, m_config.iou_threshold, 1000);
 
         // 8. 坐标转换回原图尺寸
@@ -238,7 +253,6 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
         ort->ReleaseValue(output_tensor);
         ort->ReleaseMemoryInfo(memory_info);
 
-        LOG("检测到 " + std::to_string(nms_results.size()) + " 个人脸");
         return nms_results;
     } catch (const std::exception& e) {
         LOG("人脸检测错误: " + std::string(e.what()));

@@ -17,41 +17,58 @@ if not exist "%OpenCV_DIR%\include\opencv2\opencv.hpp" (
     exit /b 1
 )
 
-:: 删除旧的构建目录
-if exist build (
-    echo Removing old build directory...
-    rd /s /q build
+:: 检查是否需要重新配置
+set NEED_CONFIGURE=0
+if not exist "build\CMakeCache.txt" (
+    set NEED_CONFIGURE=1
+    echo Build directory does not exist or is empty. Will configure...
+) else (
+    :: 检查关键文件的修改时间
+    for %%F in (CMakeLists.txt cmake\*.cmake include\*.h src\*.cpp) do (
+        if %%~tF gtr build\CMakeCache.txt (
+            set NEED_CONFIGURE=1
+            echo File %%F has been modified. Will reconfigure...
+            goto :configure
+        )
+    )
 )
 
-:: 创建并进入构建目录
-echo Creating new build directory...
-mkdir build
-cd build
-
-:: 配置项目
-echo Configuring project...
-cmake -G "Visual Studio 17 2022" -A x64 ^
-    -DOpenCV_DIR="%OpenCV_DIR%" ^
-    ..
-
-if errorlevel 1 (
-    echo Error: CMake configuration failed
+:configure
+:: 只在需要时重新配置
+if %NEED_CONFIGURE%==1 (
+    echo Configuring project...
+    if not exist build mkdir build
+    cd build
+    cmake -G "Visual Studio 17 2022" -A x64 ^
+        -DOpenCV_DIR="%OpenCV_DIR%" ^
+        -DCMAKE_BUILD_TYPE=Debug ^
+        ..
+    if errorlevel 1 (
+        echo Error: CMake configuration failed
+        cd ..
+        exit /b 1
+    )
     cd ..
-    exit /b 1
+) else (
+    echo Using existing CMake configuration...
 )
 
 :: 构建项目
-echo Building project...
-cmake --build . --config Release
+echo Building project in Debug mode...
+cmake --build build --config Debug --parallel %NUMBER_OF_PROCESSORS%
 
 if errorlevel 1 (
     echo Error: Build failed
-    cd ..
     exit /b 1
 )
 
-:: 返回原目录
-cd ..
+:: 复制 DLL 文件（如果需要）
+if not exist "..\assets" mkdir "..\assets"
+copy /Y "build\bin\Debug\face_recognition.dll" "..\assets\face_recognition.dll"
 
-echo Build completed successfully.
+:: 复制 PDB 文件以支持调试
+copy /Y "build\bin\Debug\face_recognition.pdb" "..\assets\face_recognition.pdb"
+
+echo Build completed successfully in Debug mode.
+echo PDB file has been copied for debugging support.
 pause

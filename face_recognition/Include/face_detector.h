@@ -10,8 +10,8 @@ public:
     struct Config {
         int input_width = 640;
         int input_height = 640;
-        float score_threshold = 0.5f;
-        float iou_threshold = 0.45f;
+        float score_threshold = 0.6f;    // 提高置信度阈值
+        float iou_threshold = 0.5f;      // 提高 IOU 阈值
         bool enable_landmarks = true;
         float scale_factor = 1.0f;
         bool use_letterbox = true;
