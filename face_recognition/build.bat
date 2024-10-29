@@ -62,13 +62,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: 复制 DLL 文件（如果需要）
+:: 确保 assets 目录存在
 if not exist "..\assets" mkdir "..\assets"
-copy /Y "build\bin\Debug\face_recognition.dll" "..\assets\face_recognition.dll"
 
-:: 复制 PDB 文件以支持调试
+:: 只复制 DLL 和 PDB 到 assets 目录
+echo Copying files to assets directory...
+copy /Y "build\bin\Debug\face_recognition.dll" "..\assets\face_recognition.dll"
 copy /Y "build\bin\Debug\face_recognition.pdb" "..\assets\face_recognition.pdb"
 
 echo Build completed successfully in Debug mode.
-echo PDB file has been copied for debugging support.
+echo Files have been copied to assets directory.
 pause

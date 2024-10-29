@@ -124,18 +124,62 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
 
         // 6. 后处理
         std::vector<BoxfWithLandmarks> detections;
-        std::vector<std::pair<float, int>> confidence_indices;  // 添加这行，用于排序
+        std::vector<std::pair<float, int>> confidence_indices;  // 用于排序
         const int num_anchors = 25200;  // YOLO输出的anchor数量
         const int num_classes = 1;      // 只有一个类别：人脸
         const int landmark_points = 5;   // 5个关键点
         const int output_dim = 5 + num_classes + landmark_points * 2;  // 每个anchor的输出维度
 
-        // 收集所有anchor的置信度
+        // 收集有效的检测结果
         for (int i = 0; i < num_anchors; ++i) {
             const float* row = output_data + i * output_dim;
-            float obj_conf = row[4];  // 移除 sigmoid
-            float cls_conf = row[5];  // 移除 sigmoid
+            float obj_conf = row[4];
+            float cls_conf = row[5];
             float confidence = obj_conf * cls_conf;
+
+            // 首先检查置信度
+            if (confidence < score_threshold) {
+                continue;
+            }
+
+            // 解码边界框
+            float cx = row[0];
+            float cy = row[1];
+            float w = row[2];
+            float h = row[3];
+
+            // 检查边界框的有效性
+            if (w <= 0 || h <= 0) {
+                continue;
+            }
+
+            float x1 = cx - w/2;
+            float y1 = cy - h/2;
+            float x2 = cx + w/2;
+            float y2 = cy + h/2;
+
+            // 检查边界框坐标的有效性
+            if (x1 >= x2 || y1 >= y2) {
+                continue;
+            }
+
+            // 检查关键点的有效性
+            bool valid_landmarks = true;
+            for (int j = 0; j < landmark_points; ++j) {
+                float kps_x = row[6 + j*2];
+                float kps_y = row[6 + j*2 + 1];
+                if (std::isnan(kps_x) || std::isnan(kps_y) || 
+                    std::isinf(kps_x) || std::isinf(kps_y)) {
+                    valid_landmarks = false;
+                    break;
+                }
+            }
+
+            if (!valid_landmarks) {
+                continue;
+            }
+
+            // 只有通过所有检查的检测框才会被添加到排序列表中
             confidence_indices.push_back({confidence, i});
         }
 
@@ -159,30 +203,22 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
             ss << std::fixed << std::setprecision(4)
                << "Anchor " << idx 
                << ": confidence=" << confidence
-               << ", obj_conf=" << row[4]  // 直接使用原始值
-               << ", cls_conf=" << row[5]  // 直接使用原始值
+               << ", obj_conf=" << row[4]
+               << ", cls_conf=" << row[5]
                << ", box=(" << cx << "," << cy << "," << w << "," << h << ")";
             LOG(ss.str());
         }
 
-        // 处理超过阈值的检测结果
+        // 处理有效的检测结果
         for (const auto& pair : confidence_indices) {
-            if (pair.first < score_threshold) break;  // 由于已排序，可以提前退出
-
             int i = pair.second;
             const float* row = output_data + i * output_dim;
             
-            // 解码边界框
-            float cx = row[0];
-            float cy = row[1];
-            float w = row[2];
-            float h = row[3];
-
             BoxfWithLandmarks detection;
-            detection.box.x1 = cx - w/2;
-            detection.box.y1 = cy - h/2;
-            detection.box.x2 = cx + w/2;
-            detection.box.y2 = cy + h/2;
+            detection.box.x1 = row[0] - row[2]/2;
+            detection.box.y1 = row[1] - row[3]/2;
+            detection.box.x2 = row[0] + row[2]/2;
+            detection.box.y2 = row[1] + row[3]/2;
             detection.box.score = pair.first;
             detection.box.label = 0;
             detection.box.flag = true;
@@ -215,9 +251,6 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
 
         LOG("检测到 " + std::to_string(nms_results.size()) + " 个人脸，置信度阈值: " + 
             std::to_string(score_threshold) + ", IOU阈值: " + std::to_string(m_config.iou_threshold));
-
-        // 7. 应用NMS
-        nms_bboxes_kps(detections, nms_results, m_config.iou_threshold, 1000);
 
         // 8. 坐标转换回原图尺寸
         for (auto& det : nms_results) {

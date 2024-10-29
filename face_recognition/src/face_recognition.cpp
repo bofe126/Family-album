@@ -21,29 +21,39 @@ DetectionResult detect_faces_impl(const std::string& image_path,
             throw std::runtime_error("Failed to load image: " + image_path);
         }
 
-        // 2. 处理大图像
-        image = processLargeImage(image);
-
-        // 3. 人脸检测
+        // 2. 人脸检测
         std::vector<BoxfWithLandmarks> detected_faces = detector.detect(image, score_threshold);
-        LOG("检测到 " + std::to_string(detected_faces.size()) + " 个人脸");
         
-        // 4. 准备返回结果
+        // 3. 准备返回结果
         DetectionResult result;
         result.num_faces = std::min(static_cast<int>(detected_faces.size()), max_faces);
         result.faces.reserve(result.num_faces);
         result.face_data.reserve(result.num_faces);
         result.face_features.reserve(result.num_faces);
 
-        // 5. 处理每个检测到的人脸
+        LOG("检测到 " + std::to_string(detected_faces.size()) + " 个人脸，处理前 " + 
+            std::to_string(result.num_faces) + " 个");
+
+        // 4. 处理每个检测到的人脸
         for (int i = 0; i < result.num_faces; ++i) {
             const auto& face = detected_faces[i];
-            cv::Rect face_rect(
-                static_cast<int>(face.box.x1),
-                static_cast<int>(face.box.y1),
-                static_cast<int>(face.box.x2 - face.box.x1),
-                static_cast<int>(face.box.y2 - face.box.y1)
-            );
+            
+            // 确保边界框在图像范围内
+            int x = std::max(0, static_cast<int>(face.box.x1));
+            int y = std::max(0, static_cast<int>(face.box.y1));
+            int width = std::min(static_cast<int>(face.box.x2 - face.box.x1), image.cols - x);
+            int height = std::min(static_cast<int>(face.box.y2 - face.box.y1), image.rows - y);
+            
+            // 检查边界框是否有效
+            if (width <= 0 || height <= 0) {
+                LOG("警告：跳过无效的人脸边界框: x=" + std::to_string(x) + 
+                    ", y=" + std::to_string(y) + 
+                    ", width=" + std::to_string(width) + 
+                    ", height=" + std::to_string(height));
+                continue;
+            }
+
+            cv::Rect face_rect(x, y, width, height);
             result.faces.push_back(face_rect);
             
             // 提取人脸区域
@@ -61,6 +71,8 @@ DetectionResult detect_faces_impl(const std::string& image_path,
             LOG("处理第 " + std::to_string(i+1) + " 个人脸完成");
         }
 
+        // 更新实际处理的人脸数量
+        result.num_faces = result.faces.size();
         return result;
     } catch (const std::exception& e) {
         LOG("detect_faces_impl 错误: " + std::string(e.what()));
