@@ -134,14 +134,17 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
         for (int i = 0; i < num_anchors; ++i) {
             const float* row = output_data + i * output_dim;
             float obj_conf = row[4];
-            float cls_conf = row[5];
-            float confidence = obj_conf * cls_conf;
+            float cls_conf = row[15];
+            float confidence = obj_conf;
 
             // 首先检查置信度
-            if (confidence < score_threshold) {
+            if (cls_conf < score_threshold) {
                 continue;
             }
-
+            // 首先检查置信度
+            if (obj_conf < score_threshold) {
+                continue;
+            }
             // 解码边界框
             float cx = row[0];
             float cy = row[1];
@@ -204,7 +207,7 @@ std::vector<BoxfWithLandmarks> FaceDetector::detect(const cv::Mat& image, float 
                << "Anchor " << idx 
                << ": confidence=" << confidence
                << ", obj_conf=" << row[4]
-               << ", cls_conf=" << row[5]
+               << ", cls_conf=" << row[15]
                << ", box=(" << cx << "," << cy << "," << w << "," << h << ")";
             LOG(ss.str());
         }
